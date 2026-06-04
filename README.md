@@ -163,6 +163,16 @@ or `bitmap`.
 iso8583tool validate examples/basei/0110-auth-response.hex --config examples/iso8583tool.config.json
 ```
 
+## Development
+
+```shell
+make test       # unit tests with coverage
+make test-e2e   # shellspec end-to-end tests against the built binary
+make lint       # golangci-lint
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). End-to-end tests live under `spec/`.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).

@@ -1,0 +1,47 @@
+name: reviewdog
+on: [pull_request]
+
+# reviewdog posts its findings as pull-request review comments, which needs
+# write access to pull requests; reading the checked-out code needs contents.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: reviewdog/action-golangci-lint@v2
+        with:
+          golangci_lint_flags: "--timeout 10m"
+          reporter: github-pr-review
+          level: warning
+
+  misspell:
+    name: misspell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: reviewdog/action-misspell@v1
+        with:
+          reporter: github-pr-review
+          level: warning
+          locale: "US"
+
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: reviewdog/action-actionlint@v1
+        with:
+          reporter: github-pr-review
+          level: warning

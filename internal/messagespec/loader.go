@@ -51,7 +51,7 @@ func loadJSONSpec(baseDir, path string) (*Spec, error) {
 	if err != nil {
 		return nil, err
 	}
-	messageSpec, err := moovspecs.Builder.ImportJSON(data)
+	messageSpec, err := moovspecs.ImportJSON(data)
 	if err != nil {
 		return nil, err
 	}

@@ -54,6 +54,26 @@ func TestFieldMeaning(t *testing.T) {
 	}
 }
 
+func TestFieldMeaningVariants(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ path, value, want string }{
+		{"22", "071", "Contactless ICC; PIN entry capable"},
+		{"22", "022", "Magnetic stripe; no PIN entry"},
+		{"55.9F27", "40", "TC (approved offline)"},
+		{"55.9F27", "00", "AAC (declined offline)"},
+		{"3", "201234", "Refund / return"},
+	}
+	for _, c := range cases {
+		got, ok := FieldMeaning(c.path, c.value)
+		if !ok || got != c.want {
+			t.Errorf("FieldMeaning(%q,%q) = (%q,%v), want (%q,true)", c.path, c.value, got, ok, c.want)
+		}
+	}
+	if _, ok := FieldMeaning("55.9F27", "zz"); ok {
+		t.Error("invalid cryptogram hex should not match")
+	}
+}
+
 func TestFieldMeaningDates(t *testing.T) {
 	t.Parallel()
 	cases := []struct{ path, value, want string }{

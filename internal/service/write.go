@@ -153,14 +153,16 @@ func encodeTLV(entries map[string][]byte) ([]byte, error) {
 
 func encodeBERLength(n int) []byte {
 	if n < 0x80 {
-		return []byte{byte(n)}
+		return []byte{byte(n & 0x7f)}
 	}
 	var b []byte
 	for n > 0 {
 		b = append([]byte{byte(n & 0xff)}, b...)
 		n >>= 8
 	}
-	return append([]byte{byte(0x80 | len(b))}, b...)
+	// b holds at most 8 length bytes, so 0x80|len(b) is always one byte.
+	lengthPrefix := byte(0x80 | (len(b) & 0x7f)) //nolint:gosec // len(b) <= 8, value fits in a byte
+	return append([]byte{lengthPrefix}, b...)
 }
 
 func sortedMapKeys(values map[string]string) []string {

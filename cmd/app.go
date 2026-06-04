@@ -274,7 +274,8 @@ func (a *App) runConvert(args []string) int {
 			writeLine(a.stderr, err)
 			return 1
 		}
-		out = append(data, '\n')
+		data = append(data, '\n')
+		out = data
 		summary = fmt.Sprintf("unpacked message %s to a JSON document", doc.MTI)
 	}
 
