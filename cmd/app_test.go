@@ -106,6 +106,39 @@ func TestViewShowsEMVDotPaths(t *testing.T) {
 	}
 }
 
+func TestViewJSONMasksCardholderData(t *testing.T) {
+	t.Parallel()
+
+	code, out, _ := runApp("", "view", example("0100-auth-request.hex"), "--format", "json")
+	if code != 0 {
+		t.Fatalf("view json failed: %d", code)
+	}
+	// The full PAN appears in field 2 and track 2; neither may leak.
+	if strings.Contains(out, "4111111111111111") {
+		t.Fatalf("view --format json leaked the PAN:\n%s", out)
+	}
+	if !strings.Contains(out, "411111******1111") {
+		t.Fatalf("expected a masked PAN in view json:\n%s", out)
+	}
+}
+
+func TestViewFilterExpandsComposite(t *testing.T) {
+	t.Parallel()
+
+	// A filter on a composite root must expand into child paths, not dump raw
+	// bytes (matching diff --filter).
+	code, out, _ := runApp("", "view", example("0110-auth-response.hex"), "--filter", "55", "--format", "json")
+	if code != 0 {
+		t.Fatalf("view --filter failed: %d", code)
+	}
+	if !strings.Contains(out, "55.8A") {
+		t.Fatalf("filter on composite 55 should expand to subpaths:\n%s", out)
+	}
+	if strings.Contains(out, "\"path\": \"55\"") {
+		t.Fatalf("filter should not emit the raw composite root:\n%s", out)
+	}
+}
+
 func TestViewJSONHasDecodedAndNoColor(t *testing.T) {
 	t.Parallel()
 

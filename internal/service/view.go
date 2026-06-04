@@ -15,6 +15,7 @@ import (
 
 	"github.com/nao1215/iso8583tool/internal/annotate"
 	"github.com/nao1215/iso8583tool/internal/basei"
+	"github.com/nao1215/iso8583tool/internal/messageio"
 	"github.com/nao1215/iso8583tool/internal/render"
 )
 
@@ -46,7 +47,12 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	summary := Summarize(msg)
 
 	if len(filters) > 0 {
-		body, err := renderFiltered(msg, filters, format, pal)
+		doc, err := MessageToDocument(spec, raw)
+		if err != nil {
+			return ViewResult{}, err
+		}
+		MaskCardholderData(&doc)
+		body, err := renderFiltered(msg, doc, filters, format, pal)
 		if err != nil {
 			return ViewResult{}, err
 		}
@@ -75,6 +81,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		if err != nil {
 			return ViewResult{}, err
 		}
+		MaskCardholderData(&doc)
 		payload := struct {
 			MTI          string                 `json:"mti"`
 			Fields       map[string]string      `json:"fields,omitempty"`
@@ -186,21 +193,39 @@ func lookupPath(msg *iso8583.Message, path string) (description, value string, o
 	return f.Spec().Description, str, true
 }
 
-// renderFiltered renders only the requested field paths.
-func renderFiltered(msg *iso8583.Message, filters []string, format string, pal render.Palette) (string, error) {
-	matched := make([]DecodedField, 0, len(filters))
-	var missing []string
-	for _, path := range filters {
-		desc, value, ok := lookupPath(msg, path)
-		if !ok {
-			missing = append(missing, path)
+// renderFiltered renders only the requested field paths from the (already
+// masked) document. A filter on a composite root expands into its child paths,
+// matching diff, instead of dumping the composite's raw bytes.
+func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []string, format string, pal render.Palette) (string, error) {
+	flat := FlattenDocument(doc)
+	paths := make([]string, 0, len(flat))
+	for p := range flat {
+		paths = append(paths, p)
+	}
+	sortPaths(paths)
+
+	matchedFilter := make(map[string]bool, len(filters))
+	matched := make([]DecodedField, 0, len(paths))
+	for _, path := range paths {
+		f := matchingFilter(path, filters)
+		if f == "" {
 			continue
 		}
+		matchedFilter[f] = true
+		value := flat[path]
+		desc, _, _ := lookupPath(msg, path)
 		entry := DecodedField{Path: path, Description: desc, Value: value}
 		if meaning, ok := annotate.FieldMeaning(path, strings.TrimSpace(value)); ok {
 			entry.Meaning = meaning
 		}
 		matched = append(matched, entry)
+	}
+
+	var missing []string
+	for _, f := range filters {
+		if !matchedFilter[f] {
+			missing = append(missing, f)
+		}
 	}
 
 	if format == "json" {
@@ -213,7 +238,11 @@ func renderFiltered(msg *iso8583.Message, filters []string, format string, pal r
 
 	var b strings.Builder
 	for _, m := range matched {
-		line := pal.Green("F"+m.Path) + " " + m.Description + ": " + pal.Yellow(m.Value)
+		label := pal.Green("F" + m.Path)
+		if m.Description != "" {
+			label += " " + m.Description
+		}
+		line := label + ": " + pal.Yellow(m.Value)
 		if m.Meaning != "" {
 			line += "  " + pal.Cyan("→ "+m.Meaning)
 		}
@@ -223,6 +252,16 @@ func renderFiltered(msg *iso8583.Message, filters []string, format string, pal r
 		b.WriteString(pal.Dim("F"+path+": <not present>") + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// matchingFilter returns the filter that selects path, or "" when none does.
+func matchingFilter(path string, filters []string) string {
+	for _, f := range filters {
+		if path == f || strings.HasPrefix(path, f+".") {
+			return f
+		}
+	}
+	return ""
 }
 
 // DecodeFields walks the present fields and returns the ones whose coded value

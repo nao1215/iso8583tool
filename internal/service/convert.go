@@ -15,8 +15,8 @@ import (
 
 // MessageToDocument unpacks a packed message and renders it as a message
 // document (the same shape `write`/convert accept), so the result round-trips.
-// Composite fields (e.g. Field 55) are emitted as one raw-hex binary field to
-// preserve unknown TLV tags.
+// BER-TLV composites (e.g. Field 55) are emitted per tag and preserve unknown
+// tags; positional and nested composites are expanded into their child paths.
 func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, error) {
 	msg := iso8583.NewMessage(spec)
 	if err := safeUnpack(msg, raw); err != nil {
@@ -43,51 +43,23 @@ func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Documen
 	}
 	sort.Ints(ids)
 
-	unknown := iso8583.UnknownTags(msg)
-
 	for _, id := range ids {
-		path := strconv.Itoa(id)
-		f := fields[id]
+		if err := appendFieldToDocument(&doc, strconv.Itoa(id), fields[id]); err != nil {
+			return messageio.Document{}, err
+		}
+	}
 
-		// Composite (TLV) fields like F55 are emitted per tag so individual EMV
-		// tags can be edited; unknown tags are included so they round-trip.
-		if container, ok := f.(interface {
-			GetSubfields() map[string]field.Field
-		}); ok {
-			for tag, sub := range container.GetSubfields() {
-				b, err := sub.Bytes()
-				if err != nil {
-					return messageio.Document{}, fmt.Errorf("field %s.%s: %w", path, tag, err)
-				}
-				doc.BinaryFields[path+"."+tag] = strings.ToUpper(hex.EncodeToString(b))
-			}
-			prefix := path + "."
-			for tagPath, tagField := range unknown {
-				if !strings.HasPrefix(tagPath, prefix) {
-					continue
-				}
-				if _, exists := doc.BinaryFields[tagPath]; exists {
-					continue
-				}
-				b, err := tagField.Bytes()
-				if err != nil {
-					return messageio.Document{}, fmt.Errorf("field %s: %w", tagPath, err)
-				}
-				doc.BinaryFields[tagPath] = strings.ToUpper(hex.EncodeToString(b))
-			}
+	// Unknown BER-TLV tags (e.g. 55.DF8129) are kept as binary so they survive a
+	// round trip even though the spec does not define them.
+	for tagPath, tagField := range iso8583.UnknownTags(msg) {
+		if _, exists := doc.BinaryFields[tagPath]; exists {
 			continue
 		}
-
-		str, err := f.String()
+		b, err := tagField.Bytes()
 		if err != nil {
-			b, bErr := f.Bytes()
-			if bErr != nil {
-				return messageio.Document{}, fmt.Errorf("field %d: %w", id, err)
-			}
-			doc.BinaryFields[path] = strings.ToUpper(hex.EncodeToString(b))
-			continue
+			return messageio.Document{}, fmt.Errorf("field %s: %w", tagPath, err)
 		}
-		doc.Fields[path] = canonicalFieldValue(f, str)
+		doc.BinaryFields[tagPath] = upperHex(b)
 	}
 
 	if len(doc.Fields) == 0 {
@@ -97,6 +69,74 @@ func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Documen
 		doc.BinaryFields = nil
 	}
 	return doc, nil
+}
+
+// appendFieldToDocument writes a field (and any subfields) into the document at
+// the given dot-path. BER-TLV composites become one binary entry per tag;
+// other composites are recursed; primitives become text (or hex when they are
+// not printable strings).
+func appendFieldToDocument(doc *messageio.Document, path string, f field.Field) error {
+	if isTLVCompositeField(f) {
+		sub := f.(compositeField).GetSubfields()
+		for _, tag := range sortedFieldKeys(sub) {
+			b, err := sub[tag].Bytes()
+			if err != nil {
+				return fmt.Errorf("field %s.%s: %w", path, tag, err)
+			}
+			doc.BinaryFields[path+"."+tag] = upperHex(b)
+		}
+		return nil
+	}
+
+	if container, ok := f.(compositeField); ok {
+		sub := container.GetSubfields()
+		for _, name := range sortedFieldKeys(sub) {
+			if err := appendFieldToDocument(doc, path+"."+name, sub[name]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	str, err := f.String()
+	if err != nil {
+		b, bErr := f.Bytes()
+		if bErr != nil {
+			return fmt.Errorf("field %s: %w", path, err)
+		}
+		doc.BinaryFields[path] = upperHex(b)
+		return nil
+	}
+	doc.Fields[path] = canonicalFieldValue(f, str)
+	return nil
+}
+
+type compositeField interface {
+	GetSubfields() map[string]field.Field
+}
+
+// isTLVCompositeField reports whether the field is a BER-TLV composite (its
+// subfields are addressed by encoded tags), as opposed to a positional one.
+func isTLVCompositeField(f field.Field) bool {
+	composite, ok := f.(*field.Composite)
+	if !ok {
+		return false
+	}
+	s := composite.Spec()
+	return s != nil && s.Tag != nil && s.Tag.Enc != nil
+}
+
+func sortedFieldKeys(m map[string]field.Field) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func upperHex(b []byte) string {
+	return strings.ToUpper(hex.EncodeToString(b))
 }
 
 // canonicalFieldValue restores the on-the-wire, edit-ready representation of a
