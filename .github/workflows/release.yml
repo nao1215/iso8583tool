@@ -5,11 +5,53 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
-  release:
-    name: Release
+  # Re-run the full verification suite on the exact tagged commit. The unit,
+  # e2e, and lint workflows only trigger on push to main and pull requests, so
+  # without this gate a tag pushed to the wrong commit could publish an
+  # unverified artifact. release depends on this job and never runs if it fails.
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          args: --config .golangci.yml --timeout 10m
+
+      - name: Install shellspec
+        run: |
+          curl -fsSL https://git.io/shellspec | sh -s 0.28.1 --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: make build
+
+      - name: Run shellspec end-to-end tests
+        run: shellspec --shell sh
+
+  release:
+    name: Release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code

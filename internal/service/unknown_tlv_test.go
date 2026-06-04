@@ -54,8 +54,10 @@ func TestUnknownTLVRoundTrip(t *testing.T) {
 	if len(report.UnknownTags) != 1 || report.UnknownTags[0].Path != "55.DF8129" {
 		t.Fatalf("expected unknown tag 55.DF8129, got %#v", report.UnknownTags)
 	}
-	if report.UnknownTags[0].Raw != "AABBCCDD" {
-		t.Fatalf("unknown tag raw = %q, want AABBCCDD", report.UnknownTags[0].Raw)
+	// The unknown tag's bytes can hold cardholder data, so the report masks
+	// them (length-preserving) while still flagging the tag path.
+	if report.UnknownTags[0].Raw != "********" {
+		t.Fatalf("unknown tag raw = %q, want it masked to ********", report.UnknownTags[0].Raw)
 	}
 	if !hasUnknownTagWarning(report) {
 		t.Fatalf("expected a warning issue for the unknown tag, got %#v", report.Issues)

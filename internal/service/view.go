@@ -46,12 +46,18 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	decoded := DecodeFields(msg)
 	summary := Summarize(msg)
 
+	// Unknown TLV tags carry partner-defined data the spec cannot vouch for
+	// (e.g. an unmapped Track 2 tag holding a PAN), so every display surface
+	// masks their bytes. Only convert keeps them intact, for round-trip safety.
+	safeUnknownTags := maskUnknownTagValues(unknownTags)
+
 	if len(filters) > 0 {
 		doc, err := MessageToDocument(spec, raw)
 		if err != nil {
 			return ViewResult{}, err
 		}
 		MaskCardholderData(&doc)
+		maskUnknownInDocument(&doc, unknownTags)
 		body, err := renderFiltered(msg, doc, filters, format, pal)
 		if err != nil {
 			return ViewResult{}, err
@@ -65,12 +71,12 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		if err := iso8583.Describe(msg, &buf); err != nil {
 			return ViewResult{}, err
 		}
-		body := colorizeDescribe(buf.String(), pal)
+		body := colorizeDescribe(maskUnknownInText(buf.String(), unknownTags), pal)
 		return ViewResult{
 			Body:        body,
 			Summary:     summary,
 			Extensions:  extensions,
-			UnknownTags: unknownTags,
+			UnknownTags: safeUnknownTags,
 			Decoded:     decoded,
 		}, nil
 	case "json":
@@ -82,6 +88,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			return ViewResult{}, err
 		}
 		MaskCardholderData(&doc)
+		maskUnknownInDocument(&doc, unknownTags)
 		payload := struct {
 			MTI          string                 `json:"mti"`
 			Fields       map[string]string      `json:"fields,omitempty"`
@@ -96,7 +103,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			BinaryFields: doc.BinaryFields,
 			Summary:      summary,
 			Extensions:   extensions,
-			UnknownTags:  unknownTags,
+			UnknownTags:  safeUnknownTags,
 			Decoded:      decoded,
 		}
 		data, err := json.MarshalIndent(payload, "", "  ")
@@ -107,7 +114,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			Body:        string(data),
 			Summary:     summary,
 			Extensions:  extensions,
-			UnknownTags: unknownTags,
+			UnknownTags: safeUnknownTags,
 			Decoded:     decoded,
 		}, nil
 	default:

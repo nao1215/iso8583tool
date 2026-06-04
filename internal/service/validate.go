@@ -100,7 +100,9 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 		})
 	}
 
-	report.UnknownTags = collectUnknownTags(msg)
+	// Mask the bytes of unknown tags: they can hold cardholder data and the
+	// report only needs to flag the tag path, not its contents.
+	report.UnknownTags = maskUnknownTagValues(collectUnknownTags(msg))
 	for _, unknown := range report.UnknownTags {
 		report.Issues = append(report.Issues, ValidationIssue{
 			Severity: "warning",

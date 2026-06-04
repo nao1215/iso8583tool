@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -63,8 +64,58 @@ func RedactMessage(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, [
 		masked = append(masked, "55."+cryptogramTag)
 	}
 
+	// Unknown TLV tags can hold anything, including cardholder data, so a
+	// "safe to share" document must mask them too.
+	msg := iso8583.NewMessage(spec)
+	if err := safeUnpack(msg, raw); err != nil {
+		return messageio.Document{}, nil, errors.New(diagnoseUnpack(err, raw).String())
+	}
+	masked = append(masked, maskUnknownInDocument(&doc, collectUnknownTags(msg))...)
+
 	sort.Strings(masked)
 	return doc, masked, nil
+}
+
+// maskUnknownTagValues returns copies of the unknown tags with their raw values
+// masked. Unknown tags can carry cardholder data (e.g. an unmapped Track 2
+// tag), so view and validate print the tag path but never its bytes.
+func maskUnknownTagValues(tags []UnknownTag) []UnknownTag {
+	if len(tags) == 0 {
+		return nil
+	}
+	masked := make([]UnknownTag, len(tags))
+	for i, t := range tags {
+		t.Raw = maskAll(t.Raw)
+		masked[i] = t
+	}
+	return masked
+}
+
+// maskUnknownInDocument masks the binary-field values of the given unknown TLV
+// tags in place and returns the paths it masked. view and redact call this so
+// unknown tags never leak; convert skips it so they survive a round trip.
+func maskUnknownInDocument(doc *messageio.Document, tags []UnknownTag) []string {
+	var masked []string
+	for _, t := range tags {
+		if v, ok := doc.BinaryFields[t.Path]; ok {
+			doc.BinaryFields[t.Path] = maskAll(v)
+			masked = append(masked, t.Path)
+		}
+	}
+	return masked
+}
+
+// maskUnknownInText replaces the raw hex of each unknown TLV tag in moov's
+// Describe output with a length-preserving mask, so the text view does not leak
+// bytes the document and unknown-tag list already mask.
+func maskUnknownInText(body string, tags []UnknownTag) string {
+	for _, t := range tags {
+		if t.Raw == "" {
+			continue
+		}
+		body = strings.ReplaceAll(body, t.Raw, maskAll(t.Raw))
+	}
+	return body
 }
 
 // maskPAN keeps the 6-digit BIN and the last 4 digits and masks the rest.
