@@ -44,6 +44,9 @@ type ValidationReport struct {
 	Extensions     []ExtensionNotice `json:"extensions,omitempty"`
 	UnknownTags    []UnknownTag      `json:"unknown_tags,omitempty"`
 	Decoded        []DecodedField    `json:"decoded,omitempty"`
+	// Hint is an optional next step shown to the user, for example a pointer to
+	// `doctor` when a message will not unpack under the chosen spec.
+	Hint string `json:"hint,omitempty"`
 }
 
 func (r ValidationReport) HasErrors() bool {
@@ -76,6 +79,9 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 			Path:     path,
 			Message:  fmt.Sprintf("%s (input was %d bytes)", diag.Cause, diag.Bytes),
 		})
+		// A failed unpack is the classic "wrong spec" symptom, so point at the
+		// detector instead of leaving the user to guess.
+		report.Hint = "the message did not unpack under " + specLabel + "; run `iso8583tool doctor` to detect the right spec"
 		report.Valid = false
 		return report
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/nao1215/iso8583tool/internal/basei"
 	"github.com/nao1215/iso8583tool/internal/config"
+	"github.com/nao1215/iso8583tool/internal/messageio"
 	"github.com/nao1215/iso8583tool/internal/messagespec"
 	"github.com/nao1215/iso8583tool/internal/render"
 )
@@ -45,6 +46,54 @@ func TestWriteValidateAndView(t *testing.T) {
 	}
 	if len(viewResult.UnknownTags) != 0 {
 		t.Fatalf("expected no unknown tags, got %#v", viewResult.UnknownTags)
+	}
+}
+
+func TestWriteValidateAndViewPackedBCDStarter(t *testing.T) {
+	t.Parallel()
+
+	spec, err := messagespec.Load(".", config.Config{Spec: basei.Spec87BCDStarterPreset})
+	if err != nil {
+		t.Fatalf("messagespec.Load returned error: %v", err)
+	}
+
+	doc := messageio.Document{
+		MTI: "0100",
+		Fields: map[string]string{
+			"2":  "4019249999999999",
+			"3":  "327327",
+			"4":  "000000001138",
+			"14": "2204",
+		},
+	}
+	writeResult, err := WriteMessage(doc, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("WriteMessage returned error: %v", err)
+	}
+
+	if got := strings.ToUpper(hex.EncodeToString(writeResult.Raw)); got != "010070040000000000001040192499999999993273270000000011382204" {
+		t.Fatalf("packed raw = %s", got)
+	}
+
+	report := ValidateMessage(writeResult.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
+	if report.HasErrors() {
+		t.Fatalf("ValidateMessage returned errors: %#v", report.Issues)
+	}
+
+	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "json", nil, render.NewPalette(false), false)
+	if err != nil {
+		t.Fatalf("ViewMessage returned error: %v", err)
+	}
+	if !strings.Contains(viewResult.Body, `"mti": "0100"`) || !strings.Contains(viewResult.Body, `"2": "401924******9999"`) {
+		t.Fatalf("unexpected packed-bcd view:\n%s", viewResult.Body)
+	}
+
+	gotDoc, err := MessageToDocument(spec.MessageSpec, writeResult.Raw)
+	if err != nil {
+		t.Fatalf("MessageToDocument returned error: %v", err)
+	}
+	if gotDoc.MTI != "0100" || gotDoc.Fields["4"] != "000000001138" {
+		t.Fatalf("unexpected round-trip doc: %#v", gotDoc)
 	}
 }
 

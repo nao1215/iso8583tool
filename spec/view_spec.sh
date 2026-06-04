@@ -79,6 +79,20 @@ Describe 'iso8583tool view'
     End
   End
 
+  Describe 'raw binary + packed BCD'
+    BeforeEach 'make_workdir; write_kanmu_like_message "$WORK/message.bin"'
+    AfterEach 'remove_workdir'
+
+    It 'views a kanmu-like raw message with the packed-BCD starter preset'
+      When run iso8583tool view "$WORK/message.bin" --encoding raw --spec "$PACKED_BCD_SPEC"
+      The status should be success
+      The output should include '401924******9999'
+      The output should include '327327'
+      The output should include '1138'
+      The output should include '2204'
+    End
+  End
+
   Describe 'private-field safety'
     It 'masks a PAN embedded in a free-form private field by default'
       When run sh -c 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\",\"39\":\"00\",\"63\":\"PAN=4111111111111111\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" view - --format json'

@@ -18,24 +18,22 @@ type Spec struct {
 	Label       string
 }
 
-// Load resolves the message spec from a config. A spec value that is not a
-// known preset is treated as a path to a moov-io/iso8583 JSON spec, resolved
+// Load resolves the message spec from a config. An empty value selects the
+// default preset; a value matching a built-in preset uses that preset; any
+// other value is treated as a path to a moov-io/iso8583 JSON spec, resolved
 // relative to baseDir.
 func Load(baseDir string, cfg config.Config) (*Spec, error) {
-	switch spec := strings.TrimSpace(cfg.Spec); spec {
-	case "", basei.StarterPreset:
-		return &Spec{
-			MessageSpec: basei.StarterMessageSpec(),
-			Label:       "basei-starter",
-		}, nil
-	case "spec87ascii":
-		return &Spec{
-			MessageSpec: basei.Spec87ASCIIWithSecondaryFields(),
-			Label:       "spec87ascii",
-		}, nil
-	default:
-		return loadJSONSpec(baseDir, spec)
+	spec := strings.TrimSpace(cfg.Spec)
+	if spec == "" {
+		spec = basei.StarterPreset
 	}
+	if preset, ok := basei.LookupPreset(spec); ok {
+		return &Spec{
+			MessageSpec: preset.Spec(),
+			Label:       preset.Name,
+		}, nil
+	}
+	return loadJSONSpec(baseDir, spec)
 }
 
 func loadJSONSpec(baseDir, path string) (*Spec, error) {

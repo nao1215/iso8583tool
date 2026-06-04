@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `doctor`: detect which built-in spec preset fits a message. It tries every
+  preset and recommends the best fit, ranked by an exact byte-length round trip,
+  a clean unpack, a valid MTI, and the number of decoded fields. Text and
+  `--format json` output; exits non-zero when no built-in preset can unpack the
+  message.
+- `specs`: list the built-in spec presets (`basei-starter`, `spec87ascii`,
+  `spec87bcd-starter`) with their encoding and a one-line "when to use" note, in
+  text or `--format json`.
+- `--spec NAME|PATH` flag on `view`, `diff`, `redact`, `convert`, and `validate`
+  to select a built-in preset or a `moov-io/iso8583` JSON spec directly. When
+  both are given, `--spec` overrides the spec named in `--config`.
+- `validate` now prints a `Hint` pointing at `doctor` when a message fails to
+  unpack, since the usual cause is the wrong spec.
+
+### Changed
+
+- `--config` is now scoped to extension catalogs and default bundles; the spec is
+  selected with `--spec`. The `spec` field in a config file still provides a
+  default. The single-preset example configs (`spec87ascii.config.json`,
+  `spec87bcd.config.json`) are removed, and the remaining examples are renamed to
+  `examples/basei-overlay-config.json` and `examples/iso8583tool-config.json`.
+
 ## [0.1.0] - 2026-06-04
 
 First public release: a command-line tool for debugging and inspecting ISO 8583

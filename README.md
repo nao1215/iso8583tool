@@ -57,9 +57,15 @@ diff       Compare two messages field by field
 redact     Mask PAN, track, and EMV sensitive data
 convert    Convert between a packed message and a JSON document
 validate   Check that a message unpacks and report issues
+doctor     Detect which built-in spec preset fits a message
+specs      List the built-in spec presets
 sample     List or export built-in BASE I samples
 version    Print the version
 ```
+
+Every command defaults to the `basei-starter` spec. If a capture does not decode,
+run `iso8583tool doctor MESSAGE` to find the preset that fits, then pass it with
+`--spec`. `iso8583tool specs` lists the presets.
 
 ## `view`
 
@@ -237,10 +243,67 @@ exits non-zero (use `--raw` to pass an inline message instead of a file):
 ```shell
 $ iso8583tool validate --raw 01007220
 Validation: failed
+Hint: the message did not unpack under basei-starter; run `iso8583tool doctor` to detect the right spec
 ...
 - [error] ...
 $ echo $?
 1
+```
+
+The hint appears whenever a message fails to unpack, since the usual cause is the
+wrong spec. See [`doctor`](#doctor).
+
+## `doctor`
+
+ISO 8583 does not pin a wire encoding: the same bitmap can be ASCII, packed BCD,
+or binary, and private fields differ per network. So a capture only decodes under
+the spec it was produced with. `doctor` takes that guesswork out: it tries every
+built-in preset and recommends the best fit, ranked by an exact byte-length round
+trip, a clean unpack, a valid MTI, and the number of decoded fields.
+
+```shell
+iso8583tool doctor examples/basei/0110-auth-response.hex
+iso8583tool doctor message.bin --encoding raw
+iso8583tool doctor examples/basei/0110-auth-response.hex --format json | jq .recommended
+```
+
+```text
+$ iso8583tool doctor examples/basei/0110-auth-response.hex
+Doctor: inspected 216 bytes
+Recommended: --spec basei-starter
+
+Candidates:
+- basei-starter      recommended  MTI 0110, 16 fields, exact byte-length round trip
+- spec87ascii        no           cannot unpack field 55: invalid ASCII char ...
+- spec87bcd-starter  no           cannot unpack field 45: invalid syntax ...
+
+Confirm with: iso8583tool view examples/basei/0110-auth-response.hex --spec basei-starter
+```
+
+`doctor` exits non-zero when no built-in preset can unpack the message, which
+usually means it needs a custom `moov-io/iso8583` JSON spec. It only ranks the
+built-in presets and can flag more than one as fitting, so confirm the result
+with `view`. `validate` points here when a message fails to unpack.
+
+## `specs`
+
+Lists the built-in presets that `--spec` accepts. Any `moov-io/iso8583` JSON spec
+path also works as `--spec`.
+
+```shell
+iso8583tool specs
+iso8583tool specs --format json | jq -r '.[].name'
+```
+
+```text
+$ iso8583tool specs
+Built-in spec presets (use with --spec NAME):
+
+- basei-starter (default)
+  BASE I Starter ASCII
+  encoding: ASCII fields, ASCII-hex bitmap, field 55 as EMV BER-TLV
+  Default. BASE I authorization/financial traffic with EMV ICC data in field 55.
+...
 ```
 
 ## `sample`
@@ -307,17 +370,22 @@ iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex | iso8583to
 
 ## Other layouts
 
-`--config` switches the spec. `spec87ascii` is the plain ISO 8583:1987 ASCII
-spec; any [`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec works
-too.
+`--spec` switches the spec. `spec87ascii` is the plain ISO 8583:1987 ASCII
+spec. `spec87bcd-starter` is a raw-binary starter for packed-BCD MTI/common
+numeric fields plus a binary bitmap, which is useful for quiz-style fixtures
+such as `kanmu/gocon-2022-spring/message.bin`. Any
+[`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec works too. Run
+[`iso8583tool specs`](#specs) to list the presets, or
+[`iso8583tool doctor`](#doctor) to detect which one a capture uses.
 
 ```shell
-iso8583tool view examples/spec87ascii/0800-network-echo.hex --config examples/spec87ascii.config.json
+iso8583tool view examples/spec87ascii/0800-network-echo.hex --spec spec87ascii
+iso8583tool view message.bin --encoding raw --spec spec87bcd-starter
 ```
 
-A config selects the spec and, for BASE I-style sets, overrides the extension
-catalog. The `extensions` list **replaces** the built-in catalog, so list every
-private field you want annotated, not just the one you are changing:
+`--config` remains available for extension overlays and default bundles. The
+`extensions` list **replaces** the built-in catalog, so list every private field
+you want annotated, not just the one you are changing:
 
 ```json
 {
@@ -328,15 +396,16 @@ private field you want annotated, not just the one you are changing:
 }
 ```
 
-`spec` is `basei-starter`, `spec87ascii`, or a path to a moov JSON spec relative
-to the config file. `strategy` is `opaque`, `tlv`, `positional`, or `bitmap`.
+`spec` in the config file is optional and can provide a default. The CLI
+`--spec` flag overrides it when both are present. `strategy` is `opaque`,
+`tlv`, `positional`, or `bitmap`.
 
 A fuller worked overlay that relabels the private-field band (F48/F55/F62/F63/F127)
 for a fictional acquirer lives at
-[`examples/basei-overlay.config.json`](./examples/basei-overlay.config.json):
+[`examples/basei-overlay-config.json`](./examples/basei-overlay-config.json):
 
 ```shell
-iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay.config.json
+iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay-config.json
 ```
 
 ## Fuzzing and property-based tests

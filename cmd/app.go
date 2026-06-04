@@ -90,6 +90,10 @@ func (a *App) Run(args []string) int {
 		return a.runConvert(args[1:])
 	case "validate":
 		return a.runValidate(args[1:])
+	case "doctor":
+		return a.runDoctor(args[1:])
+	case "specs":
+		return a.runSpecs(args[1:])
 	case "sample":
 		return a.runSample(args[1:])
 	case "version", "-v", "--version":
@@ -112,7 +116,7 @@ func (a *App) runHelp(args []string) int {
 	rest := args[1:]
 
 	switch name {
-	case "view", "diff", "redact", "convert", "validate", "sample":
+	case "view", "diff", "redact", "convert", "validate", "doctor", "specs", "sample":
 		forwarded := make([]string, 0, len(args)+1)
 		forwarded = append(forwarded, args...)
 		forwarded = append(forwarded, "--help")
@@ -134,7 +138,8 @@ func (a *App) runHelp(args []string) int {
 
 func (a *App) runView(args []string) int {
 	flagSet := newFlagSet("view", a.stderr)
-	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "describe", "output format: describe or json")
@@ -145,7 +150,7 @@ func (a *App) runView(args []string) int {
 	flagSet.Var(&filters, "filter", "only show this field path (repeatable, e.g. --filter 39 --filter 55.9F02)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Inspect an ISO8583 message with the configured spec.")
-		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding hex|raw] [--format describe|json] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding hex|raw] [--format describe|json] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
 		writeLine(a.stderr, "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -165,7 +170,7 @@ func (a *App) runView(args []string) int {
 		return 1
 	}
 
-	ctx, err := a.loadContext(*configPath)
+	ctx, err := a.loadContext(*specName, *configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -223,7 +228,8 @@ func (a *App) runView(args []string) int {
 
 func (a *App) runDiff(args []string) int {
 	flagSet := newFlagSet("diff", a.stderr)
-	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
@@ -233,7 +239,7 @@ func (a *App) runDiff(args []string) int {
 	flagSet.Var(&filters, "filter", "only compare this field path (repeatable)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Compare two ISO8583 messages field by field.")
-		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--unsafe] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Either BEFORE or AFTER may be '-' to read that side from stdin.")
 		writeLine(a.stderr, "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -261,7 +267,7 @@ func (a *App) runDiff(args []string) int {
 		return 1
 	}
 
-	ctx, err := a.loadContext(*configPath)
+	ctx, err := a.loadContext(*specName, *configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -334,7 +340,8 @@ func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
 
 func (a *App) runRedact(args []string) int {
 	flagSet := newFlagSet("redact", a.stderr)
-	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "json", "output format: json or text")
@@ -342,7 +349,7 @@ func (a *App) runRedact(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Mask cardholder data and secrets so a message can be shared safely.")
-		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--config PATH] [--encoding hex|raw] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -362,7 +369,7 @@ func (a *App) runRedact(args []string) int {
 		return 1
 	}
 
-	ctx, err := a.loadContext(*configPath)
+	ctx, err := a.loadContext(*specName, *configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -432,15 +439,16 @@ func (a *App) printRedacted(doc messageio.Document, paths []string, pal render.P
 
 func (a *App) runConvert(args []string) int {
 	flagSet := newFlagSet("convert", a.stderr)
-	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	outputPath := flagSet.String("output", "", "path to write the result")
 	encoding := flagSet.String("encoding", "hex", "message-side encoding: hex or raw")
 	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Convert between a packed message and a JSON document (direction auto-detected).")
-		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--config PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw]")
 		writeLine(a.stderr, "JSON input is packed to a message; a message is unpacked to a JSON document.")
-		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --config to select another spec (e.g. spec87ascii or a moov JSON spec).")
+		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
 	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
@@ -452,7 +460,7 @@ func (a *App) runConvert(args []string) int {
 		return 1
 	}
 
-	ctx, err := a.loadContext(*configPath)
+	ctx, err := a.loadContext(*specName, *configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -549,7 +557,8 @@ func convertDirection(to string, source []byte) (string, error) {
 
 func (a *App) runValidate(args []string) int {
 	flagSet := newFlagSet("validate", a.stderr)
-	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
@@ -558,7 +567,7 @@ func (a *App) runValidate(args []string) int {
 	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -578,7 +587,7 @@ func (a *App) runValidate(args []string) int {
 		return 1
 	}
 
-	ctx, err := a.loadContext(*configPath)
+	ctx, err := a.loadContext(*specName, *configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -607,6 +616,169 @@ func (a *App) runValidate(args []string) int {
 	}
 
 	if report.HasErrors() {
+		return 1
+	}
+	return 0
+}
+
+func (a *App) runDoctor(args []string) int {
+	flagSet := newFlagSet("doctor", a.stderr)
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
+	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	format := flagSet.String("format", "text", "output format: text or json")
+	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	flagSet.Usage = func() {
+		writeLine(a.stderr, "Detect which built-in spec preset fits a message.")
+		writeLine(a.stderr, "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
+		writeLine(a.stderr, "Tries every preset and recommends the best fit; confirm the result with view.")
+		printFlagDefaults(a.stderr, flagSet)
+	}
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+		return code
+	}
+	target := flagSet.Arg(0)
+	if flagSet.NArg() > 1 {
+		flagSet.Usage()
+		return 1
+	}
+
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	diag := service.DiagnoseSpec(input)
+	switch *format {
+	case "text":
+		a.printSpecDiagnosis(diag, target, a.palette(mode, *format))
+	case "json":
+		data, err := json.MarshalIndent(diag, "", "  ")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		writef(a.stdout, "%s\n", data)
+	default:
+		writef(a.stderr, "unsupported format %q\n", *format)
+		return 1
+	}
+
+	// No preset unpacking the message is the actionable failure: exit non-zero
+	// so a script can branch on it.
+	if diag.Recommended == "" {
+		return 1
+	}
+	return 0
+}
+
+func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal render.Palette) {
+	unit := "bytes"
+	if diag.Bytes == 1 {
+		unit = "byte"
+	}
+	writef(a.stdout, "%s inspected %d %s\n", pal.Dim("Doctor:"), diag.Bytes, unit)
+	if diag.Recommended == "" {
+		writeLine(a.stdout, pal.Red("No built-in preset could unpack this message."))
+		writeLine(a.stdout, pal.Dim("It may use a custom layout; pass a moov-io/iso8583 JSON spec with --spec PATH."))
+	} else {
+		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+diag.Recommended))
+		if diag.Ambiguous {
+			writeLine(a.stdout, pal.Yellow("Note: more than one preset fits equally well; confirm by eye."))
+		}
+	}
+
+	writef(a.stdout, "\n%s\n", pal.BoldCyan("Candidates:"))
+	for _, c := range diag.Candidates {
+		name := fmt.Sprintf("%-18s", c.Preset)
+		switch {
+		case c.Preset == diag.Recommended:
+			writef(a.stdout, "- %s %s  %s\n", pal.Green(name), pal.BoldGreen("recommended"), pal.Dim(c.Detail))
+		case c.Unpacks:
+			writef(a.stdout, "- %s %s         %s\n", pal.Green(name), pal.Cyan("fits"), pal.Dim(c.Detail))
+		default:
+			writef(a.stdout, "- %s %s           %s\n", name, pal.Red("no"), pal.Dim(c.Detail))
+		}
+	}
+
+	if diag.Recommended != "" {
+		hintTarget := target
+		if strings.TrimSpace(hintTarget) == "" || hintTarget == "-" {
+			hintTarget = "MESSAGE"
+		}
+		writef(a.stdout, "\n%s iso8583tool view %s --spec %s\n",
+			pal.Dim("Confirm with:"), hintTarget, diag.Recommended)
+	}
+}
+
+func (a *App) runSpecs(args []string) int {
+	flagSet := newFlagSet("specs", a.stderr)
+	format := flagSet.String("format", "text", "output format: text or json")
+	flagSet.Usage = func() {
+		writeLine(a.stderr, "List the built-in spec presets selectable with --spec.")
+		writeLine(a.stderr, "Usage: iso8583tool specs [--format text|json]")
+		writeLine(a.stderr, "Any moov-io/iso8583 JSON spec path also works as --spec.")
+		printFlagDefaults(a.stderr, flagSet)
+	}
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+		return code
+	}
+	if flagSet.NArg() > 0 {
+		flagSet.Usage()
+		return 1
+	}
+
+	presets := basei.Presets()
+	switch *format {
+	case "text":
+		writeLine(a.stdout, "Built-in spec presets (use with --spec NAME):")
+		for _, p := range presets {
+			name := p.Name
+			if p.Default {
+				name += " (default)"
+			}
+			writef(a.stdout, "\n- %s\n", name)
+			writef(a.stdout, "  %s\n", p.Title)
+			writef(a.stdout, "  encoding: %s\n", p.Encoding)
+			writef(a.stdout, "  %s\n", p.Summary)
+		}
+		writeLine(a.stdout, "")
+		writeLine(a.stdout, "Any moov-io/iso8583 JSON spec path also works as --spec.")
+		writeLine(a.stdout, "Unsure which one a capture uses? Run \"iso8583tool doctor MESSAGE\".")
+	case "json":
+		type specInfo struct {
+			Name     string `json:"name"`
+			Title    string `json:"title"`
+			Encoding string `json:"encoding"`
+			Summary  string `json:"summary"`
+			Default  bool   `json:"default"`
+		}
+		out := make([]specInfo, 0, len(presets))
+		for _, p := range presets {
+			out = append(out, specInfo{
+				Name:     p.Name,
+				Title:    p.Title,
+				Encoding: p.Encoding,
+				Summary:  p.Summary,
+				Default:  p.Default,
+			})
+		}
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		writef(a.stdout, "%s\n", data)
+	default:
+		writef(a.stderr, "unsupported format %q\n", *format)
 		return 1
 	}
 	return 0
@@ -689,7 +861,7 @@ func (a *App) renderSample(sample basei.Sample, format string) ([]byte, error) {
 	}
 }
 
-func (a *App) loadContext(configPath string) (resolvedContext, error) {
+func (a *App) loadContext(specName, configPath string) (resolvedContext, error) {
 	cfg := config.Default()
 	baseDir := a.workDir
 	if path := strings.TrimSpace(configPath); path != "" {
@@ -699,6 +871,10 @@ func (a *App) loadContext(configPath string) (resolvedContext, error) {
 		}
 		cfg = loaded
 		baseDir = filepath.Dir(path)
+	}
+	if spec := strings.TrimSpace(specName); spec != "" {
+		cfg.Spec = spec
+		baseDir = a.workDir
 	}
 
 	specResult, err := messagespec.Load(baseDir, cfg)
@@ -779,12 +955,15 @@ func (a *App) printRootHelp() {
 	writeLine(a.stderr, "  redact     Mask sensitive fields for safe sharing")
 	writeLine(a.stderr, "  convert    Convert between a packed message and a JSON document")
 	writeLine(a.stderr, "  validate   Check a message against the configured spec")
+	writeLine(a.stderr, "  doctor     Detect which built-in spec preset fits a message")
+	writeLine(a.stderr, "  specs      List the built-in spec presets")
 	writeLine(a.stderr, "  sample     List or export built-in BASE I starter samples")
 	writeLine(a.stderr, "  version    Print the version")
 	writeLine(a.stderr, "  help       Show command help")
 	writeLine(a.stderr, "")
-	writeLine(a.stderr, "Messages can be read from a file, '-', or stdin. Pass a spec or extension")
-	writeLine(a.stderr, "catalog with --config PATH; without it the built-in basei-starter is used.")
+	writeLine(a.stderr, "Messages can be read from a file, '-', or stdin. Use --spec for a preset")
+	writeLine(a.stderr, "or JSON spec path, and --config PATH for extension catalogs/default overrides.")
+	writeLine(a.stderr, "Not sure which spec a capture uses? Run \"iso8583tool doctor MESSAGE\".")
 }
 
 func (a *App) printValidationReport(report service.ValidationReport, pal render.Palette) {
@@ -792,6 +971,9 @@ func (a *App) printValidationReport(report service.ValidationReport, pal render.
 		writef(a.stdout, "%s %s\n", pal.Dim("Validation:"), pal.Red("failed"))
 	} else {
 		writef(a.stdout, "%s %s\n", pal.Dim("Validation:"), pal.BoldGreen("ok"))
+	}
+	if report.Hint != "" {
+		writef(a.stdout, "%s %s\n", pal.Dim("Hint:"), pal.Yellow(report.Hint))
 	}
 	writef(a.stdout, "%s %s\n", pal.Dim("Spec:"), pal.Bold(report.Spec))
 	if report.MTI != "" {
