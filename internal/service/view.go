@@ -55,15 +55,22 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		displayUnknownTags = unknownTags
 	}
 
+	// maskForDisplay applies the default masking unless the caller opted into raw
+	// output, so the filtered and json branches share one masking decision.
+	maskForDisplay := func(doc *messageio.Document) {
+		if unsafe {
+			return
+		}
+		MaskCardholderData(doc)
+		maskUnknownInDocument(doc, unknownTags)
+	}
+
 	if len(filters) > 0 {
 		doc, err := MessageToDocument(spec, raw)
 		if err != nil {
 			return ViewResult{}, err
 		}
-		if !unsafe {
-			MaskCardholderData(&doc)
-			maskUnknownInDocument(&doc, unknownTags)
-		}
+		maskForDisplay(&doc)
 		body, err := renderFiltered(msg, doc, filters, format, pal, summary)
 		if err != nil {
 			return ViewResult{}, err
@@ -101,10 +108,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		if err != nil {
 			return ViewResult{}, err
 		}
-		if !unsafe {
-			MaskCardholderData(&doc)
-			maskUnknownInDocument(&doc, unknownTags)
-		}
+		maskForDisplay(&doc)
 		payload := struct {
 			MTI          string                 `json:"mti"`
 			Fields       map[string]string      `json:"fields,omitempty"`

@@ -8,6 +8,29 @@ import (
 	"strings"
 )
 
+// The four MTI position vocabularies (version, class, function, origin). Kept at
+// package scope so MTI() does not re-allocate them on every call.
+var (
+	mtiVersion = map[byte]string{
+		'0': "ISO8583:1987", '1': "ISO8583:1993", '2': "ISO8583:2003",
+		'8': "National", '9': "Private",
+	}
+	mtiClass = map[byte]string{
+		'1': "Authorization", '2': "Financial", '3': "File action",
+		'4': "Reversal", '5': "Reconciliation", '6': "Administrative",
+		'7': "Fee collection", '8': "Network management", '9': "Reserved",
+	}
+	mtiFunction = map[byte]string{
+		'0': "Request", '1': "Response", '2': "Advice",
+		'3': "Advice response", '4': "Notification", '5': "Notification ack",
+		'6': "Instruction", '7': "Instruction ack",
+	}
+	mtiOrigin = map[byte]string{
+		'0': "Acquirer", '1': "Acquirer repeat", '2': "Issuer",
+		'3': "Issuer repeat", '4': "Other", '5': "Other repeat",
+	}
+)
+
 // MTI returns a human description of a 4-digit Message Type Indicator,
 // or "" when the value does not look like an MTI.
 func MTI(mti string) string {
@@ -15,37 +38,19 @@ func MTI(mti string) string {
 	if len(mti) != 4 || !isDigits(mti) {
 		return ""
 	}
-	version := map[byte]string{
-		'0': "ISO8583:1987", '1': "ISO8583:1993", '2': "ISO8583:2003",
-		'8': "National", '9': "Private",
-	}
-	class := map[byte]string{
-		'1': "Authorization", '2': "Financial", '3': "File action",
-		'4': "Reversal", '5': "Reconciliation", '6': "Administrative",
-		'7': "Fee collection", '8': "Network management", '9': "Reserved",
-	}
-	function := map[byte]string{
-		'0': "Request", '1': "Response", '2': "Advice",
-		'3': "Advice response", '4': "Notification", '5': "Notification ack",
-		'6': "Instruction", '7': "Instruction ack",
-	}
-	origin := map[byte]string{
-		'0': "Acquirer", '1': "Acquirer repeat", '2': "Issuer",
-		'3': "Issuer repeat", '4': "Other", '5': "Other repeat",
-	}
 
-	parts := make([]string, 0, 4)
-	if v, ok := class[mti[1]]; ok {
+	parts := make([]string, 0, 3)
+	if v, ok := mtiClass[mti[1]]; ok {
 		parts = append(parts, v)
 	}
-	if v, ok := function[mti[2]]; ok {
+	if v, ok := mtiFunction[mti[2]]; ok {
 		parts = append(parts, v)
 	}
-	if v, ok := origin[mti[3]]; ok {
+	if v, ok := mtiOrigin[mti[3]]; ok {
 		parts = append(parts, "from "+v)
 	}
 	head := strings.Join(parts, " ")
-	if v, ok := version[mti[0]]; ok {
+	if v, ok := mtiVersion[mti[0]]; ok {
 		if head == "" {
 			return v
 		}

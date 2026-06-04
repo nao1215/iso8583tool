@@ -11,10 +11,20 @@ import (
 	"github.com/nao1215/iso8583tool/internal/basei"
 )
 
+// Severity classifies a validation issue. It marshals to the same JSON strings
+// ("error", "warning") as before, but the named type and constants keep the
+// vocabulary in one place and prevent typo'd severities.
+type Severity string
+
+const (
+	SeverityError   Severity = "error"
+	SeverityWarning Severity = "warning"
+)
+
 type ValidationIssue struct {
-	Severity string `json:"severity"`
-	Path     string `json:"path,omitempty"`
-	Message  string `json:"message"`
+	Severity Severity `json:"severity"`
+	Path     string   `json:"path,omitempty"`
+	Message  string   `json:"message"`
 }
 
 type ExtensionNotice struct {
@@ -38,7 +48,7 @@ type ValidationReport struct {
 
 func (r ValidationReport) HasErrors() bool {
 	for _, issue := range r.Issues {
-		if issue.Severity == "error" {
+		if issue.Severity == SeverityError {
 			return true
 		}
 	}
@@ -62,7 +72,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 			path = "message"
 		}
 		report.Issues = append(report.Issues, ValidationIssue{
-			Severity: "error",
+			Severity: SeverityError,
 			Path:     path,
 			Message:  fmt.Sprintf("%s (input was %d bytes)", diag.Cause, diag.Bytes),
 		})
@@ -73,7 +83,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 	mti, err := msg.GetMTI()
 	if err != nil {
 		report.Issues = append(report.Issues, ValidationIssue{
-			Severity: "error",
+			Severity: SeverityError,
 			Path:     "0",
 			Message:  err.Error(),
 		})
@@ -81,7 +91,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 		report.MTI = mti
 		if mti == "" {
 			report.Issues = append(report.Issues, ValidationIssue{
-				Severity: "error",
+				Severity: SeverityError,
 				Path:     "0",
 				Message:  "missing MTI",
 			})
@@ -111,7 +121,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 	report.UnknownTags = maskUnknownTagValues(collectUnknownTags(msg))
 	for _, unknown := range report.UnknownTags {
 		report.Issues = append(report.Issues, ValidationIssue{
-			Severity: "warning",
+			Severity: SeverityWarning,
 			Path:     unknown.Path,
 			Message:  "unknown TLV tag preserved for round-trip safety",
 		})
@@ -132,17 +142,17 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 // or partner-specific overlay.
 func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	var issues []ValidationIssue
-	add := func(severity, path, message string) {
+	add := func(severity Severity, path, message string) {
 		issues = append(issues, ValidationIssue{Severity: severity, Path: path, Message: message})
 	}
 
 	if len(mti) != 4 {
-		add("error", "0", "strict: MTI must be 4 digits to classify the message")
+		add(SeverityError, "0", "strict: MTI must be 4 digits to classify the message")
 		return issues
 	}
 	for _, r := range mti {
 		if r < '0' || r > '9' {
-			add("error", "0", "strict: MTI must be numeric")
+			add(SeverityError, "0", "strict: MTI must be numeric")
 			return issues
 		}
 	}
@@ -159,12 +169,12 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	}
 	require := func(id int, context string) {
 		if !has(id) {
-			add("error", strconv.Itoa(id), "strict: required for "+context)
+			add(SeverityError, strconv.Itoa(id), "strict: required for "+context)
 		}
 	}
 	recommend := func(id int, context string) {
 		if !has(id) {
-			add("warning", strconv.Itoa(id), "strict: recommended for "+context)
+			add(SeverityWarning, strconv.Itoa(id), "strict: recommended for "+context)
 		}
 	}
 
@@ -184,13 +194,13 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 			require(4, "an authorization/financial request (amount)")
 			require(7, "an authorization/financial request (transmission date/time)")
 			if !hasAny(2, 35, 45) {
-				add("error", "2", "strict: an authorization/financial request needs a PAN source (field 2, 35, or 45)")
+				add(SeverityError, "2", "strict: an authorization/financial request needs a PAN source (field 2, 35, or 45)")
 			}
 			recommend(37, "card messages (retrieval reference number)")
 		case isResponse:
 			require(39, "an authorization/financial response (response code)")
 			if rc, err := msg.GetString(39); err == nil && isApprovalCode(rc) && !has(38) {
-				add("warning", "38", "strict: an approved response (field 39="+strings.TrimSpace(rc)+") usually carries an authorization identification (field 38)")
+				add(SeverityWarning, "38", "strict: an approved response (field 39="+strings.TrimSpace(rc)+") usually carries an authorization identification (field 38)")
 			}
 			recommend(37, "card messages (retrieval reference number)")
 		}

@@ -166,7 +166,7 @@ func TestViewMasksOnlyUnknownTagValues(t *testing.T) {
 	}
 }
 
-func hasIssue(report ValidationReport, severity, path string) bool {
+func hasIssue(report ValidationReport, severity Severity, path string) bool {
 	for _, issue := range report.Issues {
 		if issue.Severity == severity && issue.Path == path {
 			return true

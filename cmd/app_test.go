@@ -460,22 +460,24 @@ func TestInputSelectionErrors(t *testing.T) {
 func TestReorderEndOfOptions(t *testing.T) {
 	t.Parallel()
 
+	valueFlags := map[string]bool{"filter": true, "format": true}
+
 	// Everything after "--" stays positional, re-emitted after a "--" marker so
 	// the flag parser does not treat "-response.hex" as a flag.
-	got := reorder([]string{"--", "-response.hex"}, viewValueFlags)
+	got := reorder([]string{"--", "-response.hex"}, valueFlags)
 	if len(got) != 2 || got[0] != "--" || got[1] != "-response.hex" {
 		t.Fatalf("reorder(-- -response.hex) = %#v", got)
 	}
 
 	// A positional before flags is moved behind a "--" so it is never reparsed.
-	got = reorder([]string{"msg", "--filter", "39"}, viewValueFlags)
+	got = reorder([]string{"msg", "--filter", "39"}, valueFlags)
 	want := []string{"--filter", "39", "--", "msg"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("reorder = %#v, want %#v", got, want)
 	}
 
 	// No positionals: no trailing "--" is added.
-	got = reorder([]string{"--format", "json"}, viewValueFlags)
+	got = reorder([]string{"--format", "json"}, valueFlags)
 	if strings.Join(got, " ") != "--format json" {
 		t.Fatalf("reorder(no positional) = %#v", got)
 	}

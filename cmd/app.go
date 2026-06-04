@@ -150,7 +150,7 @@ func (a *App) runView(args []string) int {
 		writeLine(a.stderr, "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, viewValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -238,7 +238,7 @@ func (a *App) runDiff(args []string) int {
 		writeLine(a.stderr, "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, diffValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	if flagSet.NArg() != 2 {
@@ -347,7 +347,7 @@ func (a *App) runRedact(args []string) int {
 		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, redactValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -443,7 +443,7 @@ func (a *App) runConvert(args []string) int {
 		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --config to select another spec (e.g. spec87ascii or a moov JSON spec).")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, convertValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -563,7 +563,7 @@ func (a *App) runValidate(args []string) int {
 		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, validateValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -621,7 +621,7 @@ func (a *App) runSample(args []string) int {
 		writeLine(a.stderr, "Usage: iso8583tool sample [NAME] [--format json|hex] [--output PATH]")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorder(args, sampleValueFlags)); !ok {
+	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
 		return code
 	}
 	if flagSet.NArg() > 1 {
@@ -817,7 +817,7 @@ func (a *App) printValidationReport(report service.ValidationReport, pal render.
 	if len(report.Issues) > 0 {
 		writef(a.stdout, "\n%s\n", pal.Bold("Issues:"))
 		for _, issue := range report.Issues {
-			sev := severityColor(pal, issue.Severity)
+			sev := severityColor(pal, string(issue.Severity))
 			if issue.Path == "" {
 				writef(a.stdout, "- [%s] %s\n", sev, issue.Message)
 				continue
@@ -861,16 +861,21 @@ func (m *multiFlag) Set(v string) error {
 	return nil
 }
 
-// Value-taking flags per command, used by reorder so positional arguments may
-// appear before or after flags.
-var (
-	viewValueFlags     = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true, "filter": true}
-	validateValueFlags = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true}
-	convertValueFlags  = map[string]bool{"config": true, "output": true, "encoding": true, "to": true}
-	sampleValueFlags   = map[string]bool{"format": true, "output": true}
-	diffValueFlags     = map[string]bool{"config": true, "encoding": true, "format": true, "color": true, "filter": true}
-	redactValueFlags   = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true}
-)
+// boolFlag matches the stdlib interface implemented by flags that take no value.
+type boolFlag interface{ IsBoolFlag() bool }
+
+// reorderArgs reorders args so positional arguments may appear before or after
+// flags. The set of value-taking flags is derived from flagSet itself (every
+// non-bool flag), so it can never drift from the flags a command registers.
+func reorderArgs(flagSet *flag.FlagSet, args []string) []string {
+	valueFlags := map[string]bool{}
+	flagSet.VisitAll(func(f *flag.Flag) {
+		if bf, ok := f.Value.(boolFlag); !ok || !bf.IsBoolFlag() {
+			valueFlags[f.Name] = true
+		}
+	})
+	return reorder(args, valueFlags)
+}
 
 // reorder moves flags ahead of positional arguments so the stdlib flag parser
 // (which stops at the first non-flag) accepts both "view msg --json" and
