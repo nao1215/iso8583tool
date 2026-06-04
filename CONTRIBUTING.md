@@ -48,3 +48,4 @@ locally with the `make` targets above:
 - `e2e_test.yml`: runs the shellspec end-to-end tests on Linux and macOS (`make test-e2e`)
 - `coverage.yml`: reports coverage with octocov
 - `reviewdog.yml`: comments on lint, misspell, and workflow issues in pull requests
+- `release.yml`: publishes tagged release artifacts with GoReleaser
