@@ -99,6 +99,51 @@ func TestDiagnoseSpecFlagsAmbiguousPlainASCII(t *testing.T) {
 	}
 }
 
+func TestSpecDiagnosisBestScore(t *testing.T) {
+	t.Parallel()
+
+	diag := SpecDiagnosis{Candidates: []SpecCandidate{{Score: 0}, {Score: 134}, {Score: 100}}}
+	if got := diag.BestScore(); got != 134 {
+		t.Errorf("BestScore() = %d, want 134", got)
+	}
+	if got := (SpecDiagnosis{}).BestScore(); got != 0 {
+		t.Errorf("BestScore() of an empty diagnosis = %d, want 0", got)
+	}
+}
+
+func TestDiagnoseRawAsciiBeatsHexReading(t *testing.T) {
+	t.Parallel()
+
+	// A raw ASCII 0800 message with only numeric fields is, byte-for-byte, a
+	// valid even-length hex string, so LooksLikeHex cannot tell the two readings
+	// apart. The raw reading round-trips exactly through basei-starter, so its
+	// best score must beat the hex reading, which only weakly fits spec87bcd.
+	doc := messageio.Document{
+		MTI: "0800",
+		Fields: map[string]string{
+			"7":  "0604161616",
+			"11": "654321",
+		},
+	}
+	result, err := WriteMessage(doc, basei.Spec87ASCIIWithSecondaryFields())
+	if err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+	if !messageio.LooksLikeHex(result.Raw) {
+		t.Fatalf("fixture must look like hex to exercise the ambiguity: %q", result.Raw)
+	}
+	decoded, err := messageio.DecodeInput(result.Raw, "hex")
+	if err != nil {
+		t.Fatalf("fixture must also decode as hex: %v", err)
+	}
+
+	rawScore := DiagnoseSpec(result.Raw).BestScore()
+	hexScore := DiagnoseSpec(decoded).BestScore()
+	if rawScore <= hexScore {
+		t.Fatalf("raw reading (%d) should beat hex reading (%d) for an ASCII message", rawScore, hexScore)
+	}
+}
+
 func TestDiagnoseSpecNoFitGivesNoRecommendation(t *testing.T) {
 	t.Parallel()
 

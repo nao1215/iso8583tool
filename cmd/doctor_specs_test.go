@@ -111,6 +111,37 @@ func TestDoctorAutoDetectsRawBinFile(t *testing.T) {
 	}
 }
 
+func TestDoctorAutoDetectsRawAsciiAllNumeric(t *testing.T) {
+	t.Parallel()
+
+	// A raw ASCII 0800 message whose every byte is a digit is, byte-for-byte, a
+	// valid even-length hex string, so the cheap "looks like hex" test cannot
+	// tell the two readings apart. Auto-detection must still pick the raw
+	// reading, which round-trips exactly through basei-starter, instead of
+	// decoding it as packed hex and recommending the wrong BCD preset.
+	raw := "0800022000000000000000000000000000000604161616654321"
+	path := filepath.Join(t.TempDir(), "ascii.bin")
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatalf("write bin: %v", err)
+	}
+
+	code, out, errOut := runApp("", "doctor", path, "--no-color")
+	if code != 0 {
+		t.Fatalf("doctor on raw ASCII failed: %d\nstdout=%s\nstderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"(raw input)",
+		"Recommended: --spec basei-starter",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor raw ASCII output missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Recommended: --spec spec87bcd-starter") {
+		t.Errorf("doctor must not mis-read a raw ASCII message as packed hex\n%s", out)
+	}
+}
+
 func TestDoctorJSONAndNoFit(t *testing.T) {
 	t.Parallel()
 

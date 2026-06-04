@@ -23,8 +23,10 @@ type Config struct {
 	// moov-io/iso8583 JSON spec, resolved relative to the config file. The CLI
 	// --spec flag overrides this value when both are provided.
 	Spec string `json:"spec,omitempty"`
-	// Extensions is an inline extension-field catalog. When empty the
-	// built-in BASE I catalog is used.
+	// Extensions is an inline extension-field catalog that replaces the built-in
+	// one. A nil slice (the key omitted) keeps the built-in BASE I catalog; an
+	// explicit empty array disables it entirely. The omitempty tag only affects
+	// marshalling, so this omitted-vs-explicit-empty distinction survives a load.
 	Extensions []basei.ExtensionField `json:"extensions,omitempty"`
 }
 
@@ -58,9 +60,10 @@ func Load(path string) (Config, error) {
 }
 
 // Catalog returns the configured extension catalog, or the built-in default
-// when none is specified.
+// when the extensions key was omitted. An explicit empty array replaces the
+// built-in catalog with an empty one, so no extension fields are annotated.
 func (c Config) Catalog() basei.ExtensionCatalog {
-	if len(c.Extensions) == 0 {
+	if c.Extensions == nil {
 		return basei.DefaultExtensionCatalog()
 	}
 	return basei.ExtensionCatalog{Fields: c.Extensions}

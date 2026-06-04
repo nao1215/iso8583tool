@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `doctor --encoding auto` no longer mis-reads a raw ASCII capture as hex text.
+  An all-numeric message is, byte-for-byte, a valid even-length hex string, so
+  the old "looks like hex" check picked the hex reading and recommended the
+  wrong preset. Auto-detection now compares how well a built-in preset fits each
+  reading and keeps the stronger one, so a raw ASCII message is detected as raw.
+- An explicit empty `extensions` array in a config now disables the built-in
+  extension catalog, matching the documented "the list replaces it" contract.
+  Previously `{"extensions": []}` still fell back to the built-in catalog;
+  omitting the key (the documented way to keep the built-in catalog) is
+  unchanged.
+- `view --filter` JSON no longer breaks the document shape for the MTI. The MTI
+  stays top-level and is selected by field `0` or `mti`; it is never duplicated
+  into `fields`, and `--filter 0` no longer reports it as missing.
+
 ## [0.2.1] - 2026-06-05
 
 ### Fixed

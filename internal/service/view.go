@@ -225,6 +225,10 @@ func lookupPath(msg *iso8583.Message, path string) (description, value string, o
 // matching diff, instead of dumping the composite's raw bytes.
 func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []string, format string, pal render.Palette, summary string) (string, error) {
 	flat := FlattenDocument(doc)
+	// The MTI is rendered top-level in the document shape, never as a field
+	// path, so drop the pseudo-path FlattenDocument injects before it can leak
+	// into "fields". It is selected separately, by field 0 or "mti".
+	delete(flat, "mti")
 	paths := make([]string, 0, len(flat))
 	for p := range flat {
 		paths = append(paths, p)
@@ -248,6 +252,23 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 		matched = append(matched, entry)
 	}
 
+	// The MTI is ISO 8583 field 0; "0" or "mti" selects it. It stays top-level
+	// (matching the document shape) and only carries its decoded meaning here,
+	// so it is never reported missing nor duplicated into "fields".
+	mtiSelected := false
+	mtiEntry := DecodedField{Path: "0", Value: doc.MTI}
+	if doc.MTI != "" {
+		for _, f := range filters {
+			if f == "0" || f == "mti" {
+				matchedFilter[f] = true
+				mtiSelected = true
+			}
+		}
+		if meaning := annotate.MTI(doc.MTI); meaning != "" {
+			mtiEntry.Meaning = meaning
+		}
+	}
+
 	missing := make([]string, 0, len(filters))
 	for _, f := range filters {
 		if !matchedFilter[f] {
@@ -263,6 +284,9 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 		fieldsOut := map[string]string{}
 		binaryOut := map[string]string{}
 		var decodedOut []DecodedField
+		if mtiSelected && mtiEntry.Meaning != "" {
+			decodedOut = append(decodedOut, mtiEntry)
+		}
 		for _, m := range matched {
 			if _, ok := doc.BinaryFields[m.Path]; ok {
 				binaryOut[m.Path] = m.Value
@@ -300,6 +324,13 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 	}
 
 	var b strings.Builder
+	if mtiSelected {
+		line := pal.Green("MTI") + ": " + pal.Yellow(mtiEntry.Value)
+		if mtiEntry.Meaning != "" {
+			line += "  " + pal.Cyan("→ "+mtiEntry.Meaning)
+		}
+		b.WriteString(line + "\n")
+	}
 	for _, m := range matched {
 		label := pal.Green("F" + m.Path)
 		if m.Description != "" {

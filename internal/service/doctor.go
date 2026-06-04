@@ -45,6 +45,20 @@ type SpecDiagnosis struct {
 	Candidates []SpecCandidate `json:"candidates"`
 }
 
+// BestScore returns the highest candidate score, or 0 when no preset fit. It
+// lets a caller compare two readings of the same bytes (for example hex vs raw)
+// and keep the stronger fit when a cheap byte-level heuristic cannot tell them
+// apart.
+func (d SpecDiagnosis) BestScore() int {
+	best := 0
+	for _, c := range d.Candidates {
+		if c.Score > best {
+			best = c.Score
+		}
+	}
+	return best
+}
+
 // DiagnoseSpec tries each built-in preset against raw message bytes and ranks
 // them by fit. It is a detection aid for picking --spec, not a guarantee:
 // distinct specs can unpack the same bytes, so the result names what to confirm
