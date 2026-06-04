@@ -69,7 +69,7 @@ func TestPINFieldIsHexAndMasked(t *testing.T) {
 
 	// view (json and describe) must never print the PIN.
 	for _, format := range []string{"json", "describe"} {
-		res, err := ViewMessage(raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), format, nil, render.NewPalette(false))
+		res, err := ViewMessage(raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), format, nil, render.NewPalette(false), false)
 		if err != nil {
 			t.Fatalf("ViewMessage(%s): %v", format, err)
 		}
@@ -107,7 +107,7 @@ func TestViewDescribeMasksTrackData(t *testing.T) {
 		t.Fatalf("pack: %v", err)
 	}
 
-	res, err := ViewMessage(raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false))
+	res, err := ViewMessage(raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false), false)
 	if err != nil {
 		t.Fatalf("ViewMessage: %v", err)
 	}

@@ -78,4 +78,28 @@ Describe 'iso8583tool diff'
     The status should be failure
     The stderr should include 'unsupported format'
   End
+
+  Describe 'private-field safety'
+    BeforeEach 'make_workdir'
+    AfterEach 'remove_workdir'
+
+    setup_private() {
+      printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}' | "$ISO_BIN" convert --to hex > "$WORK/pa.hex"
+      printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4222222222222222"}}' | "$ISO_BIN" convert --to hex > "$WORK/pb.hex"
+    }
+
+    It 'masks an embedded PAN by default'
+      setup_private
+      When run iso8583tool diff "$WORK/pa.hex" "$WORK/pb.hex" --color never
+      The status should be success
+      The output should not include '4111111111111111'
+    End
+
+    It 'reveals the embedded PAN with --unsafe'
+      setup_private
+      When run iso8583tool diff "$WORK/pa.hex" "$WORK/pb.hex" --color never --unsafe
+      The status should be success
+      The output should include '4111111111111111'
+    End
+  End
 End

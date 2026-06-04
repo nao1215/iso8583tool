@@ -530,6 +530,58 @@ func TestOverlayConfigRelabelsPrivateFields(t *testing.T) {
 	}
 }
 
+func TestPrivateFieldPANIsSafeByDefault(t *testing.T) {
+	t.Parallel()
+
+	doc := `{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}`
+	hexOut := func(t *testing.T) string {
+		t.Helper()
+		code, out, errOut := runApp(doc, "convert", "-", "--to", "hex")
+		if code != 0 {
+			t.Fatalf("convert: code=%d err=%q", code, errOut)
+		}
+		return strings.TrimSpace(out)
+	}
+
+	// view, redact: default must not leak; view --unsafe reveals.
+	hx := hexOut(t)
+	if code, out, _ := runApp(hx, "view", "-", "--format", "json", "--color", "never"); code != 0 || strings.Contains(out, "4111111111111111") {
+		t.Fatalf("view default leaked PAN: code=%d out=%q", code, out)
+	}
+	if code, out, _ := runApp(hx, "view", "-", "--format", "json", "--color", "never", "--unsafe"); code != 0 || !strings.Contains(out, "4111111111111111") {
+		t.Fatalf("view --unsafe should reveal PAN: code=%d out=%q", code, out)
+	}
+	if code, out, _ := runApp(hx, "redact", "-"); code != 0 || strings.Contains(out, "4111111111111111") {
+		t.Fatalf("redact default leaked PAN: code=%d out=%q", code, out)
+	}
+}
+
+func TestConvertRejectsConflictingDocument(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"dup path", `{"mti":"0100","fields":{"55.8A":"00"},"binary_fields":{"55.8A":"3035"}}`, "55.8A"},
+		{"parent child tlv", `{"mti":"0100","binary_fields":{"55":"9F0206000000005000","55.9F02":"000000009999"}}`, "55.9F02"},
+		{"parent child positional", `{"mti":"0100","fields":{"48":"x","48.1":"y"}}`, "48.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			code, _, errOut := runApp(tc.doc, "convert", "-", "--to", "hex")
+			if code != 1 {
+				t.Fatalf("conflicting document should fail: code=%d", code)
+			}
+			if !strings.Contains(errOut, tc.want) {
+				t.Fatalf("error should name %q, got %q", tc.want, errOut)
+			}
+		})
+	}
+}
+
 func TestRedactCommand(t *testing.T) {
 	t.Parallel()
 

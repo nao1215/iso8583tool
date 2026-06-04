@@ -63,8 +63,11 @@ version    Print the version
 
 ## `view`
 
-Unpacks a message and prints its fields. Coded values are decoded, and PAN and
-track data are masked.
+Unpacks a message and prints its fields. Coded values are decoded, and
+cardholder data is masked by default: the PAN, track, PIN, and EMV tags that
+carry them, plus a PAN embedded in a free-form private field (such as F63).
+Pass `--unsafe` to show the raw values for local fault analysis — this applies
+to `describe`, `json`, and filtered output alike.
 
 ![view](./docs/demo-view.gif)
 
@@ -72,6 +75,7 @@ track data are masked.
 iso8583tool view examples/basei/0110-auth-response.hex
 iso8583tool view examples/basei/0110-auth-response.hex --format json
 iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 55.8A
+iso8583tool view examples/basei/0110-auth-response.hex --unsafe
 cat examples/basei/0110-auth-response.hex | iso8583tool view -
 ```
 
@@ -96,9 +100,10 @@ iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fiel
 
 Compares two messages by field path, including nested EMV tags. Either side may
 be `-` for stdin. Differences are detected on the real values, but the displayed
-values are masked just like `view` (PAN to BIN + last four, track and unknown
-TLV bytes hidden), so diff output is safe to paste into a ticket. Pass
-`--unsafe` to show raw cardholder data for local debugging.
+values are masked just like `view` (PAN to BIN + last four; track, PIN, unknown
+TLV bytes, and a PAN embedded in a private field all hidden), so diff output is
+safe to paste into a ticket. Pass `--unsafe` to show raw cardholder data for
+local fault analysis.
 
 ![diff](./docs/demo-diff.gif)
 
@@ -123,8 +128,10 @@ Field 12 changed
 
 ## `redact`
 
-Masks the PAN, track data, PIN, and sensitive EMV tags. Output is a sanitized
-document, not a re-packable message.
+Masks the PAN, track data, PIN, sensitive EMV tags, and a PAN embedded in a
+free-form private field. Output is a sanitized document, not a re-packable
+message. `redact` has no raw mode by design — it is the sanitizer, so use
+`view --unsafe` or `diff --unsafe` when you need to see raw values.
 
 ![redact](./docs/demo-redact.gif)
 
@@ -179,7 +186,12 @@ $ iso8583tool convert examples/basei/0100-auth-request.hex
 }
 ```
 
-Unknown Field 55 tags are preserved when converting.
+Unknown Field 55 tags are preserved when converting. Unlike `view`, `convert`
+emits the document **unmasked** so it round-trips, so treat its JSON output as
+sensitive. A document is rejected when a path is ambiguous — the same path in
+both `fields` and `binary_fields`, or a parent that also has nested children
+(for example `55` together with `55.9F02`, or `48` with `48.1`) — because
+packing it would be order-dependent and silently lossy.
 
 ## `validate`
 

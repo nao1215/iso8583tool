@@ -63,4 +63,18 @@ Describe 'iso8583tool view'
       The output should include 'MTI'
     End
   End
+
+  Describe 'private-field safety'
+    It 'masks a PAN embedded in a free-form private field by default'
+      When run sh -c 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\",\"39\":\"00\",\"63\":\"PAN=4111111111111111\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" view - --format json'
+      The status should be success
+      The output should not include '4111111111111111'
+    End
+
+    It 'reveals the raw private-field value with --unsafe'
+      When run sh -c 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\",\"39\":\"00\",\"63\":\"PAN=4111111111111111\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" view - --format json --unsafe'
+      The status should be success
+      The output should include '4111111111111111'
+    End
+  End
 End

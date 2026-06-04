@@ -35,7 +35,7 @@ type DecodedField struct {
 	Meaning     string `json:"meaning,omitempty"`
 }
 
-func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionCatalog, format string, filters []string, pal render.Palette) (ViewResult, error) {
+func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionCatalog, format string, filters []string, pal render.Palette, unsafe bool) (ViewResult, error) {
 	msg := iso8583.NewMessage(spec)
 	if err := safeUnpack(msg, raw); err != nil {
 		return ViewResult{}, errors.New(diagnoseUnpack(err, raw).String())
@@ -48,16 +48,22 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 
 	// Unknown TLV tags carry partner-defined data the spec cannot vouch for
 	// (e.g. an unmapped Track 2 tag holding a PAN), so every display surface
-	// masks their bytes. Only convert keeps them intact, for round-trip safety.
-	safeUnknownTags := maskUnknownTagValues(unknownTags)
+	// masks their bytes by default. --unsafe opts into the raw values, and
+	// convert always keeps them intact for round-trip safety.
+	displayUnknownTags := maskUnknownTagValues(unknownTags)
+	if unsafe {
+		displayUnknownTags = unknownTags
+	}
 
 	if len(filters) > 0 {
 		doc, err := MessageToDocument(spec, raw)
 		if err != nil {
 			return ViewResult{}, err
 		}
-		MaskCardholderData(&doc)
-		maskUnknownInDocument(&doc, unknownTags)
+		if !unsafe {
+			MaskCardholderData(&doc)
+			maskUnknownInDocument(&doc, unknownTags)
+		}
 		body, err := renderFiltered(msg, doc, filters, format, pal)
 		if err != nil {
 			return ViewResult{}, err
@@ -68,15 +74,23 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	switch format {
 	case "", "describe", "text":
 		var buf bytes.Buffer
-		if err := iso8583.Describe(msg, &buf, safeDescribeFilters()...); err != nil {
+		describeFilters := safeDescribeFilters()
+		if unsafe {
+			describeFilters = iso8583.DoNotFilterFields()
+		}
+		if err := iso8583.Describe(msg, &buf, describeFilters...); err != nil {
 			return ViewResult{}, err
 		}
-		body := colorizeDescribe(maskUnknownInText(buf.String(), unknownTags), pal)
+		body := buf.String()
+		if !unsafe {
+			body = maskUnknownInText(body, unknownTags)
+		}
+		body = colorizeDescribe(body, pal)
 		return ViewResult{
 			Body:        body,
 			Summary:     summary,
 			Extensions:  extensions,
-			UnknownTags: safeUnknownTags,
+			UnknownTags: displayUnknownTags,
 			Decoded:     decoded,
 		}, nil
 	case "json":
@@ -87,8 +101,10 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		if err != nil {
 			return ViewResult{}, err
 		}
-		MaskCardholderData(&doc)
-		maskUnknownInDocument(&doc, unknownTags)
+		if !unsafe {
+			MaskCardholderData(&doc)
+			maskUnknownInDocument(&doc, unknownTags)
+		}
 		payload := struct {
 			MTI          string                 `json:"mti"`
 			Fields       map[string]string      `json:"fields,omitempty"`
@@ -103,7 +119,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			BinaryFields: doc.BinaryFields,
 			Summary:      summary,
 			Extensions:   extensions,
-			UnknownTags:  safeUnknownTags,
+			UnknownTags:  displayUnknownTags,
 			Decoded:      decoded,
 		}
 		data, err := json.MarshalIndent(payload, "", "  ")
@@ -114,7 +130,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			Body:        string(data),
 			Summary:     summary,
 			Extensions:  extensions,
-			UnknownTags: safeUnknownTags,
+			UnknownTags: displayUnknownTags,
 			Decoded:     decoded,
 		}, nil
 	default:

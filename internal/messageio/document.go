@@ -3,6 +3,9 @@ package messageio
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 )
 
 type Document struct {
@@ -42,6 +45,37 @@ func LooksLikeJSON(data []byte) bool {
 func (d Document) Validate() error {
 	if d.MTI == "" {
 		return errors.New("message document requires mti")
+	}
+	return d.validatePaths()
+}
+
+// validatePaths rejects ambiguous documents: a path that appears in both
+// fields and binary_fields, or a parent path that also has nested children
+// (for example "55" together with "55.9F02", or "48" with "48.1"). Either form
+// makes packing order-dependent and silently lossy, so it must fail fast.
+func (d Document) validatePaths() error {
+	owner := make(map[string]string, len(d.Fields)+len(d.BinaryFields))
+	for p := range d.Fields {
+		owner[p] = "fields"
+	}
+	for p := range d.BinaryFields {
+		if where, ok := owner[p]; ok {
+			return fmt.Errorf("path %q is defined in both %s and binary_fields; keep it in only one", p, where)
+		}
+		owner[p] = "binary_fields"
+	}
+
+	paths := make([]string, 0, len(owner))
+	for p := range owner {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths) // a parent path sorts before its dotted children
+	for i, parent := range paths {
+		for _, child := range paths[i+1:] {
+			if strings.HasPrefix(child, parent+".") {
+				return fmt.Errorf("path %q conflicts with nested path %q; set the parent field or its children, not both", parent, child)
+			}
+		}
 	}
 	return nil
 }

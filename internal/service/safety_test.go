@@ -150,7 +150,7 @@ func TestViewMasksOnlyUnknownTagValues(t *testing.T) {
 		t.Fatalf("pack: %v", err)
 	}
 
-	res, err := ViewMessage(raw.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false))
+	res, err := ViewMessage(raw.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false), false)
 	if err != nil {
 		t.Fatalf("ViewMessage: %v", err)
 	}

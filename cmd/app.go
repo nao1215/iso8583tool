@@ -141,12 +141,14 @@ func (a *App) runView(args []string) int {
 	format := flagSet.String("format", "describe", "output format: describe or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	unsafe := flagSet.Bool("unsafe", false, "show raw PAN, track, PIN, and private-field data (default: masked)")
 	var filters multiFlag
 	flagSet.Var(&filters, "filter", "only show this field path (repeatable, e.g. --filter 39 --filter 55.9F02)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Inspect an ISO8583 message with the configured spec.")
-		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--config PATH] [--filter PATH ...] [--encoding hex|raw] [--format describe|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding hex|raw] [--format describe|json] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(a.stderr, "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
 	if code, ok := parseArgs(flagSet, reorder(args, viewValueFlags)); !ok {
@@ -177,7 +179,7 @@ func (a *App) runView(args []string) int {
 	}
 
 	pal := a.palette(mode, *format)
-	result, err := service.ViewMessage(input, ctx.spec.MessageSpec, ctx.catalog, *format, filters, pal)
+	result, err := service.ViewMessage(input, ctx.spec.MessageSpec, ctx.catalog, *format, filters, pal, *unsafe)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1

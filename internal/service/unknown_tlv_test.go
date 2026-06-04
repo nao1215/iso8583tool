@@ -64,7 +64,7 @@ func TestUnknownTLVRoundTrip(t *testing.T) {
 	}
 
 	// view must list the preserved unknown tag too.
-	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false))
+	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false), false)
 	if err != nil {
 		t.Fatalf("ViewMessage returned error: %v", err)
 	}

@@ -93,7 +93,7 @@ func TestUnknownTagNeverLeaksSensitiveBytes(t *testing.T) {
 
 	// view (text and json) must mask the unknown tag everywhere.
 	for _, format := range []string{"describe", "json"} {
-		res, err := ViewMessage(raw.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), format, nil, render.NewPalette(false))
+		res, err := ViewMessage(raw.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), format, nil, render.NewPalette(false), false)
 		if err != nil {
 			t.Fatalf("ViewMessage(%s): %v", format, err)
 		}

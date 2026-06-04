@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -10,6 +11,36 @@ import (
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
+
+// privateFieldIDs are the reserved / private positional, opaque, or bitmap
+// fields whose free-form text can carry a PAN or track that no per-field or
+// per-tag rule would otherwise catch (for example "63":"PAN=4111...").
+var privateFieldIDs = map[string]bool{
+	"48": true, "60": true, "61": true, "62": true, "63": true,
+	"124": true, "125": true, "126": true, "127": true,
+}
+
+// embeddedPANPattern matches a run of 13-19 digits — the length of a PAN.
+var embeddedPANPattern = regexp.MustCompile(`\d{13,19}`)
+
+// maskEmbeddedSensitive masks PAN-length digit runs inside a free-form value,
+// keeping the BIN and last four. It is conservative in scope (only private
+// fields are scanned, so defined numeric fields like F90 are untouched) but
+// fail-safe in content: any 13-19 digit run is masked whether or not it is
+// Luhn-valid, so a test or partner-specific PAN does not slip through.
+func maskEmbeddedSensitive(value string) string {
+	return embeddedPANPattern.ReplaceAllStringFunc(value, maskPAN)
+}
+
+// isPrivateFieldPath reports whether path's top-level field id is a reserved /
+// private field whose free-form value should be content-scanned.
+func isPrivateFieldPath(path string) bool {
+	id := path
+	if i := strings.IndexByte(path, '.'); i >= 0 {
+		id = path[:i]
+	}
+	return privateFieldIDs[id]
+}
 
 // safeDescribeFilters returns moov Describe filters that mask the cardholder
 // fields with the same length-preserving masks the JSON view uses. moov's own
@@ -22,7 +53,7 @@ func safeDescribeFilters() []iso8583.FieldFilter {
 	mask := func(fn func(string) string) iso8583.FilterFunc {
 		return func(in string, _ field.Field) string { return fn(in) }
 	}
-	return []iso8583.FieldFilter{
+	filters := []iso8583.FieldFilter{
 		iso8583.FilterField("2", mask(maskPAN)),
 		iso8583.FilterField("20", mask(maskPAN)),
 		iso8583.FilterField("35", mask(maskTrack)),
@@ -31,6 +62,12 @@ func safeDescribeFilters() []iso8583.FieldFilter {
 		iso8583.FilterField("52", mask(maskAll)),
 		iso8583.FilterField("55", iso8583.EMVFilter),
 	}
+	// Content-scan the free-form private fields so an embedded PAN does not leak
+	// through the text view.
+	for id := range privateFieldIDs {
+		filters = append(filters, iso8583.FilterField(id, mask(maskEmbeddedSensitive)))
+	}
+	return filters
 }
 
 // cardholderEMVTags are Field 55 tags that carry the PAN, track, or PIN in EMV
@@ -64,6 +101,17 @@ func MaskCardholderData(doc *messageio.Document) []string {
 	mask(doc.BinaryFields, "52", maskAll) // PIN data
 	for _, tag := range cardholderEMVTags {
 		mask(doc.BinaryFields, "55."+tag, maskAll)
+	}
+
+	// Private / free-form fields can embed a PAN that no per-field rule covers.
+	for path, v := range doc.Fields {
+		if !isPrivateFieldPath(path) {
+			continue
+		}
+		if mv := maskEmbeddedSensitive(v); mv != v {
+			doc.Fields[path] = mv
+			masked = append(masked, path)
+		}
 	}
 
 	sort.Strings(masked)
@@ -175,6 +223,9 @@ func maskValueForDiff(path, value string, unknownPaths map[string]bool) string {
 				return maskAll(value)
 			}
 		}
+	}
+	if isPrivateFieldPath(path) {
+		return maskEmbeddedSensitive(value)
 	}
 	return value
 }

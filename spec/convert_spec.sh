@@ -36,6 +36,20 @@ Describe 'iso8583tool convert'
     End
   End
 
+  Describe 'document path conflicts'
+    It 'rejects a path present in both fields and binary_fields'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"55.8A\":\"00\"},\"binary_fields\":{\"55.8A\":\"3035\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include '55.8A'
+    End
+
+    It 'rejects a parent path that also has nested children'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"55\":\"9F0206000000005000\",\"55.9F02\":\"000000009999\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include '55.9F02'
+    End
+  End
+
   Describe 'round-trip'
     It 'is stable through hex -> json -> hex'
       When run sh -c '

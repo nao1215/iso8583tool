@@ -37,4 +37,10 @@ Describe 'iso8583tool redact'
     The status should be success
     The output should not include '4111111111111111'
   End
+
+  It 'masks a PAN embedded in a free-form private field (F63)'
+    When run sh -c 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\",\"39\":\"00\",\"63\":\"PAN=4111111111111111\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" redact -'
+    The status should be success
+    The output should not include '4111111111111111'
+  End
 End

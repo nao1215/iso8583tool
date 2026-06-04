@@ -159,7 +159,7 @@ func FuzzViewNeverLeaksPAN(f *testing.F) {
 		if err != nil {
 			return
 		}
-		res, err := ViewMessage(data, spec, basei.DefaultExtensionCatalog(), "describe", nil, pal)
+		res, err := ViewMessage(data, spec, basei.DefaultExtensionCatalog(), "describe", nil, pal, false)
 		if err != nil {
 			return
 		}
