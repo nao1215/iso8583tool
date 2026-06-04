@@ -66,6 +66,8 @@ version    Print the version
 Unpacks a message and prints its fields. Coded values are decoded, and PAN and
 track data are masked.
 
+![view](./docs/demo-view.gif)
+
 ```shell
 iso8583tool view examples/basei/0110-auth-response.hex
 iso8583tool view examples/basei/0110-auth-response.hex --format json
@@ -84,6 +86,8 @@ iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fiel
 Compares two messages by field path, including nested EMV tags. Either side may
 be `-` for stdin.
 
+![diff](./docs/demo-diff.gif)
+
 ```shell
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --filter 55
@@ -94,6 +98,8 @@ iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-r
 
 Masks the PAN, track data, PIN, and sensitive EMV tags. Output is a sanitized
 document, not a re-packable message.
+
+![redact](./docs/demo-redact.gif)
 
 ```shell
 iso8583tool redact examples/basei/0100-auth-request.hex
