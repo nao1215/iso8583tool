@@ -10,9 +10,11 @@
 ![GitHub](https://img.shields.io/github/license/nao1215/iso8583tool)
 
 `iso8583tool` is a CLI for viewing, validating, and converting ISO 8583
-messages. The default experience is tuned for BASE I, but the tool is not
-BASE I-only: `--config` can switch to plain `spec87ascii` or any
-[`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec.
+messages, including network-specific profiles such as BASE I, BASE II, and
+other switch-specific layouts. The repo ships with BASE I-oriented defaults
+and samples, and `--config` can switch to
+`spec87ascii` or any [`moov-io/iso8583`](https://github.com/moov-io/iso8583)
+JSON spec.
 
 ![demo](./docs/demo.gif)
 
@@ -21,8 +23,8 @@ BASE I-only: `--config` can switch to plain `spec87ascii` or any
 - BASE I starter workflow out of the box: built-in spec, extension catalog, and samples.
 - Human-friendly decoding for MTI, response codes, amounts, dates, currencies, and EMV tags.
 - Round-trippable JSON document format with per-tag Field 55 editing and unknown TLV preservation.
-- Generic ISO 8583 support via `spec87ascii` or a custom moov JSON spec passed with `--config`.
-- CLI ergonomics that work well in pipes: flags may appear before or after the target, JSON output is never colorized, and oversized input is rejected early.
+- Other ISO 8583 layouts via `spec87ascii` or a custom moov JSON spec passed with `--config`.
+- Pipe-friendly command behavior with stdin input, JSON output, and safe handling of oversized input.
 
 ## Install
 
@@ -45,16 +47,16 @@ iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
 iso8583tool convert examples/basei/0100-auth-request.hex
 ```
 
-## Scope
+## Defaults
 
-The defaults are intentionally BASE I oriented:
+The built-in profile is intentionally BASE I oriented:
 
 - `basei-starter` is the built-in spec.
 - Field 55 is modeled as EMV BER-TLV.
 - Built-in samples live under [`examples/basei`](./examples/basei).
 - The extension catalog explains how private fields such as 48, 55, 62, 63, 126, and 127 are treated.
 
-The tool can also work with non-BASE-I message sets:
+For other ISO 8583 layouts:
 
 - `spec87ascii` switches to the plain ISO 8583:1987 ASCII spec.
 - A config file may point at any moov JSON spec path, resolved relative to the config file.
@@ -187,10 +189,10 @@ iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex
 iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex | iso8583tool convert | iso8583tool view - --filter 55.DF8129
 ```
 
-## Other Specs
+## Other ISO 8583 Layouts
 
-BASE I is the default, not the limit. The repo also includes a minimal
-`spec87ascii` example under [`examples/spec87ascii`](./examples/spec87ascii).
+The repo also includes a minimal `spec87ascii` example under
+[`examples/spec87ascii`](./examples/spec87ascii).
 
 ![spec87ascii](./docs/demo-spec87ascii.gif)
 
@@ -238,13 +240,6 @@ Example: plain ISO 8583:1987 ASCII:
 ```shell
 iso8583tool validate examples/basei/0110-auth-response.hex --config examples/iso8583tool.config.json
 ```
-
-## CLI Notes
-
-- `--color` is strict: use `auto`, `always`, or `never`. Unknown values fail instead of silently disabling color.
-- `--no-color` is equivalent to `--color never`.
-- JSON output is never colorized.
-- A single input source is capped at 1 MiB, so obviously malformed or runaway input fails fast instead of being slurped whole.
 
 ## Development
 
