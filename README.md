@@ -110,6 +110,9 @@ iso8583tool sample 0100-auth-request --format hex --output 0100.hex
 }
 ```
 
+> [!NOTE]
+> The PAN `4111111111111111` used in the samples is a non-issued test number, not a real card.
+
 ## Extension fields
 
 `basei-starter` assigns each BASE I private field a strategy. The path-based
@@ -159,16 +162,6 @@ or `bitmap`.
 ```shell
 iso8583tool validate examples/basei/0110-auth-response.hex --config examples/iso8583tool.config.json
 ```
-
-## Demos
-
-The GIFs above are generated with [vhs](https://github.com/charmbracelet/vhs):
-
-```shell
-make build && vhs docs/demo-view.tape
-```
-
-The sample PAN `4111111111111111` is a non-issued test number.
 
 ## License
 
