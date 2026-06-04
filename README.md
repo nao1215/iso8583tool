@@ -9,22 +9,52 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/nao1215/iso8583tool)](https://goreportcard.com/report/github.com/nao1215/iso8583tool)
 ![GitHub](https://img.shields.io/github/license/nao1215/iso8583tool)
 
-`iso8583tool` is a CLI for viewing, validating, and converting ISO 8583
-messages, including network-specific profiles such as BASE I, BASE II, and
-other switch-specific layouts. The repo ships with BASE I-oriented defaults
-and samples, and `--config` can switch to
-`spec87ascii` or any [`moov-io/iso8583`](https://github.com/moov-io/iso8583)
-JSON spec.
+`iso8583tool` is a CLI toolbox for debugging, inspecting, validating, comparing,
+and safely sharing ISO 8583 payment messages. It is BASE I-oriented by default
+and extensible to other layouts via `--config` (a `spec87ascii` preset or any
+[`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec).
 
 ![demo](./docs/demo.gif)
 
-## Highlights
+## Operational workflows
 
-- BASE I starter workflow out of the box: built-in spec, extension catalog, and samples.
-- Human-friendly decoding for MTI, response codes, amounts, dates, currencies, and EMV tags.
-- Round-trippable JSON document format with per-tag Field 55 editing and unknown TLV preservation.
-- Other ISO 8583 layouts via `spec87ascii` or a custom moov JSON spec passed with `--config`.
-- Pipe-friendly command behavior with stdin input, JSON output, and safe handling of oversized input.
+Inspect a captured message (values decoded, PAN and track data masked):
+
+```shell
+iso8583tool view examples/basei/0110-auth-response.hex
+```
+
+Compare two messages — a request and its response, or a message before and after
+a switch mutated it:
+
+```shell
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
+```
+
+Redact cardholder data and secrets before pasting a log into chat:
+
+```shell
+iso8583tool redact examples/basei/0100-auth-request.hex
+```
+
+Script with `jq`:
+
+```shell
+iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --format json | jq '.changes[].path'
+```
+
+Edit one EMV tag and pack it back; tags the spec does not know are preserved:
+
+```shell
+iso8583tool convert examples/basei/0100-auth-request.hex > msg.json
+# edit msg.json, e.g. set "55.9F02", then pack it back
+iso8583tool convert msg.json --output edited.hex
+```
+
+Round-trip safety and unknown-TLV preservation are core guarantees: unpacking a
+message to JSON and packing it again reproduces the same bytes, and tags the
+spec does not recognize survive the round trip.
 
 ## Install
 
@@ -66,6 +96,8 @@ For other ISO 8583 layouts:
 
 ```text
 view       Unpack and inspect a message
+diff       Compare two messages field by field
+redact     Mask sensitive fields for safe sharing
 convert    Convert between a packed message and a JSON document
 validate   Check that a message unpacks and report issues
 sample     List or export built-in BASE I samples
@@ -88,6 +120,42 @@ iso8583tool view examples/basei/0110-auth-response.hex
 iso8583tool view examples/basei/0110-auth-response.hex --format json
 iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 55.8A
 cat examples/basei/0110-auth-response.hex | iso8583tool view -
+```
+
+JSON output is document-shaped and deterministic, so it works with `jq`:
+
+```shell
+iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
+iso8583tool view examples/basei/0100-auth-request.hex --format json | jq '.binary_fields["55.9F02"]'
+```
+
+## `diff`
+
+`diff` unpacks two messages and compares them by logical field path, including
+nested EMV tags such as `55.9F02`. Changes are deterministically ordered and
+marked added / removed / changed. Either side may be `-` to read from stdin.
+
+![diff](./docs/demo-diff.gif)
+
+```shell
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --filter 55
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --format json | jq '.changes[].path'
+```
+
+## `redact`
+
+`redact` masks cardholder data and secrets (PAN, track data, PIN, and sensitive
+EMV tags such as the application cryptogram) so a message can be shared safely.
+Masking is deterministic and length-preserving. The output is a sanitized
+document for sharing, not a re-packable message.
+
+![redact](./docs/demo-redact.gif)
+
+```shell
+iso8583tool redact examples/basei/0100-auth-request.hex
+iso8583tool redact examples/basei/0100-auth-request.hex --format text
+cat examples/basei/0100-auth-request.hex | iso8583tool redact -
 ```
 
 ## `convert`
@@ -240,6 +308,20 @@ Example: plain ISO 8583:1987 ASCII:
 ```shell
 iso8583tool validate examples/basei/0110-auth-response.hex --config examples/iso8583tool.config.json
 ```
+
+## Fuzzing
+
+Parsing untrusted captures is fuzzed so that malformed input (broken bitmaps,
+truncated LLVAR lengths, invalid BER-TLV) fails with an error instead of
+crashing or growing memory without bound:
+
+```shell
+go test ./internal/service -run '^$' -fuzz=FuzzMessageToDocument
+```
+
+The other targets are `FuzzDiffMessages` and `FuzzRedactMessage`. Crashing
+inputs found by the fuzzer are kept as regression seeds and replayed by
+`go test ./...`.
 
 ## Development
 
