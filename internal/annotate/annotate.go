@@ -25,7 +25,7 @@ func MTI(mti string) string {
 		'7': "Fee collection", '8': "Network management", '9': "Reserved",
 	}
 	function := map[byte]string{
-		'0': "Request", '1': "Request response", '2': "Advice",
+		'0': "Request", '1': "Response", '2': "Advice",
 		'3': "Advice response", '4': "Notification", '5': "Notification ack",
 		'6': "Instruction", '7': "Instruction ack",
 	}

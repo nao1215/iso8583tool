@@ -64,7 +64,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			MaskCardholderData(&doc)
 			maskUnknownInDocument(&doc, unknownTags)
 		}
-		body, err := renderFiltered(msg, doc, filters, format, pal)
+		body, err := renderFiltered(msg, doc, filters, format, pal, summary)
 		if err != nil {
 			return ViewResult{}, err
 		}
@@ -219,7 +219,7 @@ func lookupPath(msg *iso8583.Message, path string) (description, value string, o
 // renderFiltered renders only the requested field paths from the (already
 // masked) document. A filter on a composite root expands into its child paths,
 // matching diff, instead of dumping the composite's raw bytes.
-func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []string, format string, pal render.Palette) (string, error) {
+func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []string, format string, pal render.Palette, summary string) (string, error) {
 	flat := FlattenDocument(doc)
 	paths := make([]string, 0, len(flat))
 	for p := range flat {
@@ -244,7 +244,7 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 		matched = append(matched, entry)
 	}
 
-	var missing []string
+	missing := make([]string, 0, len(filters))
 	for _, f := range filters {
 		if !matchedFilter[f] {
 			missing = append(missing, f)
@@ -252,7 +252,43 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 	}
 
 	if format == "json" {
-		data, err := json.MarshalIndent(matched, "", "  ")
+		// A consistent subset of the unfiltered `view --format json`: the same
+		// mti / fields / binary_fields / summary / decoded keys, scoped to the
+		// matched paths, plus an always-present missing_filters array so a typo
+		// or an absent field is distinguishable in a stable shape.
+		fieldsOut := map[string]string{}
+		binaryOut := map[string]string{}
+		var decodedOut []DecodedField
+		for _, m := range matched {
+			if _, ok := doc.BinaryFields[m.Path]; ok {
+				binaryOut[m.Path] = m.Value
+			} else {
+				fieldsOut[m.Path] = m.Value
+			}
+			if m.Meaning != "" {
+				decodedOut = append(decodedOut, DecodedField{Path: m.Path, Value: m.Value, Meaning: m.Meaning})
+			}
+		}
+		payload := struct {
+			MTI            string            `json:"mti"`
+			Fields         map[string]string `json:"fields,omitempty"`
+			BinaryFields   map[string]string `json:"binary_fields,omitempty"`
+			Summary        string            `json:"summary,omitempty"`
+			Decoded        []DecodedField    `json:"decoded,omitempty"`
+			MissingFilters []string          `json:"missing_filters"`
+		}{
+			MTI:            doc.MTI,
+			Summary:        summary,
+			Decoded:        decodedOut,
+			MissingFilters: missing,
+		}
+		if len(fieldsOut) > 0 {
+			payload.Fields = fieldsOut
+		}
+		if len(binaryOut) > 0 {
+			payload.BinaryFields = binaryOut
+		}
+		data, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return "", err
 		}

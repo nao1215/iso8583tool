@@ -96,6 +96,15 @@ JSON output works with `jq`:
 iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
 ```
 
+`--filter` keeps the same object shape (`mti`, `fields`, `binary_fields`,
+`summary`, `decoded`), scoped to the matched paths, and adds a
+`missing_filters` array — always present, so a typo is distinguishable from an
+absent field:
+
+```shell
+iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 90 --format json | jq '.missing_filters'
+```
+
 ## `diff`
 
 Compares two messages by field path, including nested EMV tags. Either side may
@@ -208,7 +217,6 @@ full network certification.
 
 ```shell
 iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
-iso8583tool validate --raw 01007220
 iso8583tool validate examples/basei/0110-auth-response.hex --format json
 iso8583tool validate examples/basei/0110-auth-response.hex --strict
 ```
@@ -221,6 +229,18 @@ MTI: 0100  → Authorization Request from Acquirer (ISO8583:1987)
 ...
 Issues:
 - [warning] 55.DF8129: unknown TLV tag preserved for round-trip safety
+```
+
+A deliberately broken message is a **failure example**: it reports the error and
+exits non-zero (use `--raw` to pass an inline message instead of a file):
+
+```shell
+$ iso8583tool validate --raw 01007220
+Validation: failed
+...
+- [error] ...
+$ echo $?
+1
 ```
 
 ## `sample`

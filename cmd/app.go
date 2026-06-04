@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
 	"strings"
 
 	"github.com/nao1215/iso8583tool/internal/basei"
@@ -343,7 +342,8 @@ func (a *App) runRedact(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Mask cardholder data and secrets so a message can be shared safely.")
-		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--format json|text] [--config PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--config PATH] [--encoding hex|raw] [--color auto|always|never]")
+		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
@@ -411,7 +411,9 @@ func (a *App) printRedacted(doc messageio.Document, paths []string, pal render.P
 	for k := range doc.BinaryFields {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	// Numeric field order (F2 before F11), MTI-style first, subfields natural —
+	// the same ordering diff and filtered view use.
+	service.SortPaths(keys)
 	for _, k := range keys {
 		v, ok := doc.Fields[k]
 		if !ok {
@@ -435,9 +437,10 @@ func (a *App) runConvert(args []string) int {
 	encoding := flagSet.String("encoding", "hex", "message-side encoding: hex or raw")
 	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Convert between a packed BASE I message and a JSON document (auto-detected).")
+		writeLine(a.stderr, "Convert between a packed message and a JSON document (direction auto-detected).")
 		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--config PATH] [--encoding hex|raw]")
 		writeLine(a.stderr, "JSON input is packed to a message; a message is unpacked to a JSON document.")
+		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --config to select another spec (e.g. spec87ascii or a moov JSON spec).")
 		printFlagDefaults(a.stderr, flagSet)
 	}
 	if code, ok := parseArgs(flagSet, reorder(args, convertValueFlags)); !ok {
@@ -555,8 +558,8 @@ func (a *App) runValidate(args []string) int {
 	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--strict] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
-		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(a.stderr, flagSet)
 	}

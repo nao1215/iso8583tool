@@ -149,6 +149,13 @@ func matchesAnyFilter(path string, filters []string) bool {
 	return false
 }
 
+// SortPaths orders field paths deterministically for display: "mti" first, then
+// by numeric field id, then naturally within each nested level. It is exported
+// so renderers (for example redact's text output) share one ordering.
+func SortPaths(paths []string) {
+	sortPaths(paths)
+}
+
 // sortPaths orders paths deterministically: "mti" first, then by numeric field
 // id, then lexically within each nested level.
 func sortPaths(paths []string) {

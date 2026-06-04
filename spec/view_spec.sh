@@ -47,6 +47,21 @@ Describe 'iso8583tool view'
       The status should be success
       The output should include 'not present'
     End
+
+    It 'emits object-shaped JSON with an explicit missing_filters list'
+      When run iso8583tool view "$EXAMPLES/0110-auth-response.hex" --filter 39 --filter 90 --format json
+      The status should be success
+      The output should include '"mti"'
+      The output should include '"missing_filters"'
+      The output should include '"90"'
+      The output should include '"meaning": "Approved"'
+    End
+
+    It 'always emits missing_filters as an array even when nothing is missing'
+      When run iso8583tool view "$EXAMPLES/0110-auth-response.hex" --filter 39 --format json
+      The status should be success
+      The output should include '"missing_filters": []'
+    End
   End
 
   Describe 'stdin'

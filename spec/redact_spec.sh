@@ -32,6 +32,13 @@ Describe 'iso8583tool redact'
     The output should include '411111******1111'
   End
 
+  It 'orders text output by MTI then numeric field id'
+    When run iso8583tool redact "$EXAMPLES/0100-auth-request.hex" --format text --color never
+    The status should be success
+    The line 1 of output should include 'MTI:'
+    The line 2 of output should include 'F2 ='
+  End
+
   It 'reads from stdin for a Slack-safe pipe'
     When run sh -c 'cat "$EXAMPLES/0100-auth-request.hex" | "$ISO_BIN" redact -'
     The status should be success

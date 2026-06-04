@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,9 +78,9 @@ func TestViewDescribeDecodesAndMasks(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Summary:", "Approved", "JPY 5000", // human-readable summary
-		"411111******1111",               // PAN masked (BIN + last four, same as JSON/redact)
-		"06-04 12:34:56",                 // date decoded
-		"Authorization Request response", // MTI decoded
+		"411111******1111",                     // PAN masked (BIN + last four, same as JSON/redact)
+		"06-04 12:34:56",                       // date decoded
+		"Authorization Response from Acquirer", // MTI decoded (natural response wording)
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view output missing %q\n%s", want, out)
@@ -136,6 +137,129 @@ func TestViewFilterExpandsComposite(t *testing.T) {
 	}
 	if strings.Contains(out, "\"path\": \"55\"") {
 		t.Fatalf("filter should not emit the raw composite root:\n%s", out)
+	}
+}
+
+func TestViewFilterJSONObjectContract(t *testing.T) {
+	t.Parallel()
+
+	// Filtered JSON must be object-shaped (like the unfiltered view), with only
+	// the matched fields, and an explicit missing_filters list so a typo or an
+	// absent field is distinguishable.
+	code, out, _ := runApp("", "view", example("0110-auth-response.hex"),
+		"--filter", "39", "--filter", "55.8A", "--filter", "90", "--format", "json")
+	if code != 0 {
+		t.Fatalf("filtered json failed: %d", code)
+	}
+	if trimmed := strings.TrimSpace(out); !strings.HasPrefix(trimmed, "{") {
+		t.Fatalf("filtered json must be an object, got:\n%s", out)
+	}
+
+	var payload struct {
+		MTI          string            `json:"mti"`
+		Fields       map[string]string `json:"fields"`
+		BinaryFields map[string]string `json:"binary_fields"`
+		Summary      string            `json:"summary"`
+		Decoded      []struct {
+			Path    string `json:"path"`
+			Meaning string `json:"meaning"`
+		} `json:"decoded"`
+		MissingFilters []string `json:"missing_filters"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("filtered json is not valid object json: %v\n%s", err, out)
+	}
+	if payload.MTI != "0110" {
+		t.Fatalf("mti = %q, want 0110", payload.MTI)
+	}
+	if _, ok := payload.Fields["39"]; !ok {
+		t.Fatalf("fields should contain matched F39, got %#v", payload.Fields)
+	}
+	if _, ok := payload.BinaryFields["55.8A"]; !ok {
+		t.Fatalf("binary_fields should contain matched 55.8A, got %#v", payload.BinaryFields)
+	}
+	if _, ok := payload.Fields["2"]; ok {
+		t.Fatalf("filtered json must not include unmatched fields like F2: %#v", payload.Fields)
+	}
+	if len(payload.MissingFilters) != 1 || payload.MissingFilters[0] != "90" {
+		t.Fatalf("missing_filters should be [90], got %#v", payload.MissingFilters)
+	}
+	// Consistent with the unfiltered view --format json: summary and decoded
+	// meanings are carried over (filtered to the matched paths).
+	if payload.Summary == "" {
+		t.Fatalf("filtered json should carry a summary like the unfiltered view:\n%s", out)
+	}
+	foundMeaning := false
+	for _, d := range payload.Decoded {
+		if d.Path == "39" && d.Meaning == "Approved" {
+			foundMeaning = true
+		}
+	}
+	if !foundMeaning {
+		t.Fatalf("filtered json decoded should include F39 -> Approved:\n%s", out)
+	}
+}
+
+// TestViewFilterJSONMissingFiltersAlwaysArray pins that missing_filters is always
+// present as an array (never null/absent), so jq pipelines are stable.
+func TestViewFilterJSONMissingFiltersAlwaysArray(t *testing.T) {
+	t.Parallel()
+
+	// All filters match -> missing_filters must still be present as [].
+	code, out, _ := runApp("", "view", example("0110-auth-response.hex"), "--filter", "39", "--format", "json")
+	if code != 0 {
+		t.Fatalf("filtered json failed: %d", code)
+	}
+	if !strings.Contains(out, "\"missing_filters\": []") {
+		t.Fatalf("missing_filters must be present as an empty array when nothing is missing:\n%s", out)
+	}
+}
+
+func TestRedactTextFieldOrder(t *testing.T) {
+	t.Parallel()
+
+	code, out, _ := runApp("", "redact", example("0100-auth-request.hex"), "--format", "text", "--color", "never")
+	if code != 0 {
+		t.Fatalf("redact text failed: %d", code)
+	}
+	// Fields must be in numeric order (F2, F3, F4, F7, F11, ...), not dictionary
+	// order (which would put F11 before F2).
+	order := []string{"F2 =", "F3 =", "F4 =", "F7 =", "F11 =", "F22 =", "F49 ="}
+	prev := -1
+	for _, marker := range order {
+		idx := strings.Index(out, marker)
+		if idx < 0 {
+			t.Fatalf("missing %q in:\n%s", marker, out)
+		}
+		if idx < prev {
+			t.Fatalf("%q is out of numeric order:\n%s", marker, out)
+		}
+		prev = idx
+	}
+}
+
+func TestHelpUsageStrings(t *testing.T) {
+	t.Parallel()
+
+	_, _, redactHelp := runApp("", "help", "redact")
+	if !strings.Contains(redactHelp, "[--raw HEX]") {
+		t.Fatalf("redact usage should document --raw:\n%s", redactHelp)
+	}
+	if !strings.Contains(redactHelp, "[--color auto|always|never]") {
+		t.Fatalf("redact usage should document --color:\n%s", redactHelp)
+	}
+
+	_, _, validateHelp := runApp("", "help", "validate")
+	if !strings.Contains(validateHelp, "[--raw HEX]") {
+		t.Fatalf("validate usage should document --raw:\n%s", validateHelp)
+	}
+
+	_, _, convertHelp := runApp("", "help", "convert")
+	if strings.Contains(convertHelp, "packed BASE I message") {
+		t.Fatalf("convert help should not imply BASE I is the only spec:\n%s", convertHelp)
+	}
+	if !strings.Contains(convertHelp, "--config") {
+		t.Fatalf("convert help should mention --config for selecting the spec:\n%s", convertHelp)
 	}
 }
 

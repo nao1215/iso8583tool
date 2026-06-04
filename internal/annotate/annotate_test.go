@@ -6,11 +6,12 @@ func TestMTI(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"0100": "Authorization Request from Acquirer (ISO8583:1987)",
-		"0110": "Authorization Request response from Acquirer (ISO8583:1987)",
+		"0110": "Authorization Response from Acquirer (ISO8583:1987)",
 		"0200": "Financial Request from Acquirer (ISO8583:1987)",
+		"0210": "Financial Response from Acquirer (ISO8583:1987)",
 		"0420": "Reversal Advice from Acquirer (ISO8583:1987)",
 		"0800": "Network management Request from Acquirer (ISO8583:1987)",
-		"0810": "Network management Request response from Acquirer (ISO8583:1987)",
+		"0810": "Network management Response from Acquirer (ISO8583:1987)",
 	}
 	for mti, want := range cases {
 		if got := MTI(mti); got != want {
