@@ -39,10 +39,15 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	seen := map[int]struct{}{}
 	for _, ext := range cfg.Extensions {
 		if ext.ID <= 0 {
 			return Config{}, fmt.Errorf("extension id must be positive: %d", ext.ID)
 		}
+		if _, ok := seen[ext.ID]; ok {
+			return Config{}, fmt.Errorf("duplicate extension id: %d", ext.ID)
+		}
+		seen[ext.ID] = struct{}{}
 		if !ext.Strategy.Valid() {
 			return Config{}, fmt.Errorf("unsupported extension strategy %q for field %d", ext.Strategy, ext.ID)
 		}

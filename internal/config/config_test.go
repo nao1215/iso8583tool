@@ -66,3 +66,19 @@ func TestLoadRejectsInvalidStrategy(t *testing.T) {
 		t.Fatal("Load should reject an unknown strategy")
 	}
 }
+
+func TestLoadRejectsDuplicateExtensionIDs(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "dup.json")
+	body := `{ "extensions": [
+    { "id": 55, "name": "ICC", "strategy": "tlv" },
+    { "id": 55, "name": "ICC duplicate", "strategy": "opaque" }
+  ] }`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load should reject duplicate extension ids")
+	}
+}
