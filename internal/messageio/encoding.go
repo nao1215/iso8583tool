@@ -4,28 +4,42 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 )
 
-func ReadRawInput(filePath, raw, encoding string) ([]byte, error) {
-	hasFile := strings.TrimSpace(filePath) != ""
-	hasRaw := strings.TrimSpace(raw) != ""
-	if hasFile == hasRaw {
-		return nil, errors.New("provide exactly one of --file or --raw")
+// ReadSource returns the raw bytes for a target without decoding. The target
+// may be a file path, "-" (stdin), or "" (stdin). inline, when non-empty, is
+// used verbatim instead. stdin may be nil when not available.
+func ReadSource(target, inline string, stdin io.Reader) ([]byte, error) {
+	if strings.TrimSpace(inline) != "" {
+		if strings.TrimSpace(target) != "" {
+			return nil, errors.New("provide either a file argument or --raw, not both")
+		}
+		return []byte(inline), nil
 	}
-
-	var data []byte
-	var err error
-	if hasFile {
-		data, err = os.ReadFile(filepath.Clean(filePath))
+	if target == "-" || strings.TrimSpace(target) == "" {
+		if stdin == nil {
+			return nil, errors.New("provide a message file argument, --raw, or pipe input via stdin")
+		}
+		data, err := io.ReadAll(stdin)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		data = []byte(raw)
+		return data, nil
+	}
+	return os.ReadFile(filepath.Clean(target))
+}
+
+// ReadMessage reads a message from a file, stdin, or inline value and decodes
+// it with the given encoding.
+func ReadMessage(target, inline, encoding string, stdin io.Reader) ([]byte, error) {
+	data, err := ReadSource(target, inline, stdin)
+	if err != nil {
+		return nil, err
 	}
 	return DecodeInput(data, encoding)
 }

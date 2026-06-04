@@ -1,74 +1,107 @@
 # iso8583tool
 
-`iso8583tool` is a usability-first scaffold for a BASE I oriented ISO 8583 `viewer`, `writer`, and `validator`.
+A BASE I oriented ISO 8583 viewer, converter, and validator.
+
+It uses [moov-io/iso8583](https://github.com/moov-io/iso8583) to pack and unpack
+messages. The default spec is `basei-starter`: ASCII 1987 with Field 55 handled
+as EMV BER-TLV. No setup is required; the built-in spec is used unless you pass
+`--config`.
 
 ![demo](./docs/demo.gif)
 
-> デモの再生成: `make build && vhs docs/demo.tape`（[charmbracelet/vhs](https://github.com/charmbracelet/vhs) が必要）
-
-現在のデフォルトは `basei-starter` です。これは `moov-io/iso8583` の ASCII 1987 spec を土台にしつつ、BASE I で実務上重要になりやすい部分だけ先に扱います。
-
-- Field 55: EMV TLV として閲覧・生成
-- Field 48 / 62: 将来の positional overlay を見越して path ベースで拡張
-- Field 63: まず opaque のまま保持
-- `sample` コマンドと `examples/basei` で、最初からテスト用メッセージを触れる
-- `view` / `validate` の出力はカラー表示し、数値コードを意味に変換する（MTI・応答コード・通貨・POS entry mode・EMV タグなど）
-
-数値→意味の変換例:
-
-```text
-MTI..........: 0100  → Authorization Request from Acquirer (ISO8583:1987)
-F39  Response Code.....: 00  → Approved
-F49  Transaction Currency Code..: 392  → JPY (Japanese yen)
-F9F27 Cryptogram Information Data..: 80  → ARQC (online authorization requested)
-```
-
-色は端末では自動で有効になり、パイプやリダイレクト時は無効になります。`--color auto|always|never` で上書きでき、`NO_COLOR` 環境変数も尊重します。`--format json` は常に色なしで `decoded` 配列に意味を含めます。
-
-## Quick Start
+## Install
 
 ```shell
-go test ./...
-go run . sample
+go install github.com/nao1215/iso8583tool@latest
 ```
 
-テスト用 BASE I サンプルを JSON で見る:
+Or build from a clone:
 
 ```shell
-go run . sample --name 0100-auth-request
-go run . sample --name 0110-auth-response
+make build   # produces ./iso8583tool
 ```
 
-Packed hex を出す:
+## Commands
+
+```
+view       Unpack and inspect a message
+convert    Convert between a packed message and a JSON document
+validate   Check that a message unpacks and report issues
+sample     List or export built-in BASE I samples
+version    Print the version
+```
+
+A message is read from a file, from `-`, or from stdin. Output is colored on a
+terminal and plain when piped; use `--no-color` to force plain. Pass a spec or
+extension catalog with `--config PATH`.
+
+## view
+
+Unpacks a message and prints its fields. Numeric codes (MTI, response code,
+currency, amount, dates, EMV tags) are translated to text, and PAN and track
+data are masked.
+
+![view](./docs/demo-view.gif)
 
 ```shell
-go run . sample --name 0100-auth-request --format hex
+iso8583tool view examples/basei/0110-auth-response.hex
+iso8583tool view examples/basei/0110-auth-response.hex --format json
+iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 55.8A
+cat examples/basei/0110-auth-response.hex | iso8583tool view -
 ```
 
-同梱サンプルを検査する:
+## convert
+
+Converts between a packed message and a JSON document. The direction is detected
+from the input: a JSON document is packed to hex, a message is unpacked to a JSON
+document. Use `--to json|hex` to force it.
+
+![convert](./docs/demo-convert.gif)
 
 ```shell
-go run . view --file examples/basei/0100-auth-request.hex
-go run . validate --file examples/basei/0110-auth-response.hex
+iso8583tool convert examples/basei/0100-auth-request.json    # JSON -> hex
+iso8583tool convert examples/basei/0100-auth-request.hex     # hex  -> JSON
+iso8583tool sample 0100-auth-request --format hex | iso8583tool convert
+iso8583tool convert examples/basei/0100-auth-request.json --output out.hex
 ```
 
-JSON からメッセージを組み立てる:
+## validate
+
+Reports whether a message unpacks, plus unknown TLV tags and extension-field
+strategy. Exit code is 0 when only warnings are present and 1 on an error. A
+failure names the field that could not be unpacked.
+
+![validate](./docs/demo-validate.gif)
 
 ```shell
-go run . write --input examples/basei/0100-auth-request.json
+iso8583tool validate examples/basei/0110-auth-response.hex
+iso8583tool validate --raw 01007220        # broken: reports the failing field
 ```
 
-## Message Document Format
+## sample
 
-固定長や通常の可変長フィールドは `fields`、EMV などのバイナリ系は `binary_fields` に分けます。
+Lists and exports the bundled BASE I fixtures.
+
+![sample](./docs/demo-sample.gif)
+
+```shell
+iso8583tool sample
+iso8583tool sample 0100-auth-request
+iso8583tool sample 0100-auth-request --format hex --output 0100.hex
+```
+
+## Message document
+
+`convert` and the JSON samples use this shape. `fields` holds text values,
+`binary_fields` holds hex values, and keys are dot-paths.
 
 ```json
 {
   "mti": "0100",
   "fields": {
-    "2": "4761739001010010",
-    "48": "LOYALTY=OFF|INSTALLMENT=00",
-    "62": "ORDERID=000123|CHANNEL=ECOM"
+    "2": "4111111111111111",
+    "4": "000000005000",
+    "49": "392"
   },
   "binary_fields": {
     "55.9F02": "000000005000",
@@ -77,42 +110,66 @@ go run . write --input examples/basei/0100-auth-request.json
 }
 ```
 
-path 形式を使うので、将来 private field を本格的に subfield 化しても、CLI の入力契約は変えずに済みます。
+## Extension fields
 
-## Included BASE I Samples
+`basei-starter` assigns each BASE I private field a strategy. The path-based
+contract stays the same as a field is promoted from raw to structured.
 
-- [0100-auth-request.json](./examples/basei/0100-auth-request.json)
-- [0100-auth-request.hex](./examples/basei/0100-auth-request.hex)
-- [0110-auth-response.json](./examples/basei/0110-auth-response.json)
-- [0110-auth-response.hex](./examples/basei/0110-auth-response.hex)
-- [0100-auth-request-unknown-tlv.json](./examples/basei/0100-auth-request-unknown-tlv.json)
-- [0100-auth-request-unknown-tlv.hex](./examples/basei/0100-auth-request-unknown-tlv.hex)
+| Field | Strategy   | Notes |
+|-------|------------|-------|
+| 48    | positional | raw string now; can grow into 48.1, 48.2 |
+| 55    | tlv        | EMV BER-TLV; edit per tag, unknown tags preserved |
+| 62    | positional | raw string |
+| 63    | opaque     | raw string |
+| 127   | bitmap     | metadata only |
 
-これらは Field 48 / 55 / 62 / 63 を含むので、BASE I 向けの viewer / writer / validator の最初の回帰テストとして使えます。
+Field 55 is edited per tag. Unpack a message to JSON, change or add a tag, and
+pack it back. Tags that the spec does not know (here `DF8129`) survive the round
+trip:
 
-`0100-auth-request-unknown-tlv` は Field 55 に既知タグと未知タグ (`DF8129`) を混在させたサンプルです。`view` / `validate` が未知タグを warning として通知しつつ、unpack → re-pack で落とさずに保持することを確認できます。
+![extension fields](./docs/demo-unknown-tlv.gif)
 
 ```shell
-go run . view --file examples/basei/0100-auth-request-unknown-tlv.hex
-go run . validate --file examples/basei/0100-auth-request-unknown-tlv.hex
+iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex > msg.json
+# edit msg.json, e.g. set "55.9F02" to "000000010000" or add "55.DF01": "AABB"
+iso8583tool convert msg.json --output msg.hex
 ```
 
 ## Config
 
-`iso8583tool.toml` で spec を差し替えられます。
+A config is one JSON file that selects the spec and overrides the extension
+catalog. It is optional.
 
-```toml
-[spec]
-preset = "basei-starter"
-message_spec = "./specs/basei.json"
-extension_catalog = "./specs/extensions.json"
+![config](./docs/demo-config.gif)
+
+```json
+{
+  "spec": "basei-starter",
+  "extensions": [
+    { "id": 55, "name": "ICC System Related Data", "strategy": "tlv", "preserve_unknown_tlv_tags": true },
+    { "id": 63, "name": "Acme Settlement Blob", "strategy": "opaque" }
+  ]
+}
 ```
 
-実際のネットワーク仕様が固まったら、ここに JSON spec を差して `basei-starter` を卒業させる想定です。
+`spec` is `basei-starter`, `spec87ascii`, or a path to a moov-io/iso8583 JSON
+spec (relative to the config file). `strategy` is `opaque`, `tlv`, `positional`,
+or `bitmap`.
 
-## Notes
+```shell
+iso8583tool validate examples/basei/0110-auth-response.hex --config examples/iso8583tool.config.json
+```
 
-- `view` と `validate` は unknown TLV tag を検出すると、落とさずに通知します
-- 参考実装をローカル確認するための clone は `doc/reference/` 配下に置き、Git のコミット対象から外しています
+## Demos
 
-実装仕様として渡すなら [docs/claude-implementation-spec.md](./docs/claude-implementation-spec.md) を使い、設計意図の補足として [docs/tool-design.md](./docs/tool-design.md) と [docs/extension-field-strategy.md](./docs/extension-field-strategy.md) を参照してください。
+The GIFs above are generated with [vhs](https://github.com/charmbracelet/vhs):
+
+```shell
+make build && vhs docs/demo-view.tape
+```
+
+The sample PAN `4111111111111111` is a non-issued test number.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

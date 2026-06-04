@@ -55,17 +55,18 @@ func ResolveColor(mode string, out *os.File) bool {
 		if _, ok := os.LookupEnv("NO_COLOR"); ok {
 			return false
 		}
-		return isTerminal(out)
+		return IsTerminal(out)
 	default:
 		return false
 	}
 }
 
-func isTerminal(out *os.File) bool {
-	if out == nil {
+// IsTerminal reports whether f refers to a terminal (character device).
+func IsTerminal(f *os.File) bool {
+	if f == nil {
 		return false
 	}
-	info, err := out.Stat()
+	info, err := f.Stat()
 	if err != nil {
 		return false
 	}

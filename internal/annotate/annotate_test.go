@@ -53,3 +53,39 @@ func TestFieldMeaning(t *testing.T) {
 		t.Error("FieldMeaning for a non-coded field should not match")
 	}
 }
+
+func TestFieldMeaningDates(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ path, value, want string }{
+		{"7", "0604123456", "06-04 12:34:56"},
+		{"12", "123456", "12:34:56"},
+		{"13", "0604", "06-04"},
+		{"14", "2912", "2029-12"},
+		{"55.9A", "260604", "2026-06-04"},
+	}
+	for _, c := range cases {
+		got, ok := FieldMeaning(c.path, c.value)
+		if !ok || got != c.want {
+			t.Errorf("FieldMeaning(%q, %q) = (%q, %v), want (%q, true)", c.path, c.value, got, ok, c.want)
+		}
+	}
+}
+
+func TestFormatAmount(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		amount, currency, want string
+		ok                     bool
+	}{
+		{"000000005000", "392", "JPY 5000", true},   // JPY: no minor unit
+		{"000000005000", "840", "USD 50.00", true},  // USD: 2 decimals
+		{"000000012345", "978", "EUR 123.45", true}, // EUR: 2 decimals
+		{"000000005000", "999", "", false},          // unknown currency
+	}
+	for _, c := range cases {
+		got, ok := FormatAmount(c.amount, c.currency)
+		if ok != c.ok || got != c.want {
+			t.Errorf("FormatAmount(%q, %q) = (%q, %v), want (%q, %v)", c.amount, c.currency, got, ok, c.want, c.ok)
+		}
+	}
+}

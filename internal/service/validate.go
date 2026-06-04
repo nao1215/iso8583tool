@@ -27,6 +27,7 @@ type ValidationReport struct {
 	Spec           string            `json:"spec"`
 	MTI            string            `json:"mti,omitempty"`
 	MTIDescription string            `json:"mti_description,omitempty"`
+	Summary        string            `json:"summary,omitempty"`
 	Issues         []ValidationIssue `json:"issues,omitempty"`
 	Extensions     []ExtensionNotice `json:"extensions,omitempty"`
 	UnknownTags    []UnknownTag      `json:"unknown_tags,omitempty"`
@@ -49,10 +50,15 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 
 	msg := iso8583.NewMessage(spec)
 	if err := msg.Unpack(raw); err != nil {
+		diag := diagnoseUnpack(err, raw)
+		path := diag.Path
+		if path == "" {
+			path = "message"
+		}
 		report.Issues = append(report.Issues, ValidationIssue{
 			Severity: "error",
-			Path:     "message",
-			Message:  err.Error(),
+			Path:     path,
+			Message:  fmt.Sprintf("%s (input was %d bytes)", diag.Cause, diag.Bytes),
 		})
 		report.Valid = false
 		return report
@@ -79,6 +85,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 	}
 
 	report.Decoded = DecodeFields(msg)
+	report.Summary = Summarize(msg)
 
 	for _, ext := range activeExtensions(msg.GetFields(), catalog) {
 		note := extensionNote(ext)

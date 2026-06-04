@@ -36,7 +36,7 @@ func AuthRequest() messageio.Document {
 	return messageio.Document{
 		MTI: "0100",
 		Fields: map[string]string{
-			"2":  "4761739001010010",
+			"2":  "4111111111111111",
 			"3":  "000000",
 			"4":  "000000005000",
 			"7":  "0604123456",
@@ -49,7 +49,7 @@ func AuthRequest() messageio.Document {
 			"23": "001",
 			"24": "200",
 			"25": "00",
-			"35": "4761739001010010D29122011234567890",
+			"35": "4111111111111111D29122011234567890",
 			"37": "REF123456789",
 			"41": "TERMID01",
 			"42": "MERCHANT0000001",
@@ -86,7 +86,7 @@ func AuthResponse() messageio.Document {
 	return messageio.Document{
 		MTI: "0110",
 		Fields: map[string]string{
-			"2":  "4761739001010010",
+			"2":  "4111111111111111",
 			"3":  "000000",
 			"4":  "000000005000",
 			"7":  "0604123456",

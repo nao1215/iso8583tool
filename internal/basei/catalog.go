@@ -1,14 +1,5 @@
 package basei
 
-import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-)
-
 const StarterPreset = "basei-starter"
 
 type ExtensionStrategy string
@@ -98,47 +89,4 @@ func (c ExtensionCatalog) Lookup(id int) (ExtensionField, bool) {
 		}
 	}
 	return ExtensionField{}, false
-}
-
-func SaveCatalog(path string, catalog ExtensionCatalog) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	catalog.sort()
-	data, err := json.MarshalIndent(catalog, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(filepath.Clean(path), data, 0o600)
-}
-
-func LoadCatalog(path string) (ExtensionCatalog, error) {
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		return ExtensionCatalog{}, err
-	}
-	var catalog ExtensionCatalog
-	if err := json.Unmarshal(data, &catalog); err != nil {
-		return ExtensionCatalog{}, err
-	}
-	if len(catalog.Fields) == 0 {
-		return ExtensionCatalog{}, errors.New("extension catalog must contain at least one field")
-	}
-	for _, field := range catalog.Fields {
-		if field.ID <= 0 {
-			return ExtensionCatalog{}, fmt.Errorf("extension field id must be positive: %d", field.ID)
-		}
-		if !field.Strategy.Valid() {
-			return ExtensionCatalog{}, fmt.Errorf("unsupported extension strategy %q for field %d", field.Strategy, field.ID)
-		}
-	}
-	catalog.sort()
-	return catalog, nil
-}
-
-func (c *ExtensionCatalog) sort() {
-	sort.Slice(c.Fields, func(i, j int) bool {
-		return c.Fields[i].ID < c.Fields[j].ID
-	})
 }

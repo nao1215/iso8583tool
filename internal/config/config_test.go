@@ -1,29 +1,68 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
 
-func TestParseRoundTrip(t *testing.T) {
+	"github.com/nao1215/iso8583tool/internal/basei"
+)
+
+func TestDefaultUsesBuiltinCatalog(t *testing.T) {
 	t.Parallel()
 
-	cfg := Default("demo")
-	cfg.Spec.MessageSpec = "./specs/basei.json"
-	cfg.Transport.Header = "ascii4"
+	cfg := Default()
+	if cfg.Spec != "" {
+		t.Fatalf("Default().Spec = %q, want empty", cfg.Spec)
+	}
+	catalog := cfg.Catalog()
+	if _, ok := catalog.Lookup(55); !ok {
+		t.Fatal("default catalog should contain field 55")
+	}
+}
 
-	parsed, err := Parse([]byte(cfg.String()))
+func TestLoadInlineCatalog(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	body := `{
+  "spec": "spec87ascii",
+  "extensions": [
+    { "id": 55, "name": "ICC", "strategy": "tlv", "preserve_unknown_tlv_tags": true },
+    { "id": 63, "name": "Private", "strategy": "opaque" }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("Parse returned error: %v", err)
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Spec != "spec87ascii" {
+		t.Fatalf("Spec = %q, want spec87ascii", cfg.Spec)
 	}
 
-	if parsed.Project.Name != "demo" {
-		t.Fatalf("Project.Name = %q, want demo", parsed.Project.Name)
+	catalog := cfg.Catalog()
+	if len(catalog.Fields) != 2 {
+		t.Fatalf("catalog has %d fields, want 2", len(catalog.Fields))
 	}
-	if parsed.Spec.Preset != "basei-starter" {
-		t.Fatalf("Spec.Preset = %q, want basei-starter", parsed.Spec.Preset)
+	field55, ok := catalog.Lookup(55)
+	if !ok || field55.Strategy != basei.StrategyTLV || !field55.PreserveUnknownTLVTags {
+		t.Fatalf("field 55 not loaded as expected: %#v", field55)
 	}
-	if parsed.Spec.MessageSpec != "./specs/basei.json" {
-		t.Fatalf("Spec.MessageSpec = %q, want ./specs/basei.json", parsed.Spec.MessageSpec)
+}
+
+func TestLoadRejectsInvalidStrategy(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bad.json")
+	body := `{ "extensions": [ { "id": 48, "name": "x", "strategy": "nope" } ] }`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
-	if parsed.Transport.Header != "ascii4" {
-		t.Fatalf("Transport.Header = %q, want ascii4", parsed.Transport.Header)
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load should reject an unknown strategy")
 	}
 }

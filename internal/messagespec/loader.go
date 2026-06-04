@@ -18,12 +18,11 @@ type Spec struct {
 	Label       string
 }
 
-func Load(root string, cfg config.Config) (*Spec, error) {
-	if path := strings.TrimSpace(cfg.Spec.MessageSpec); path != "" {
-		return loadJSONSpec(root, path)
-	}
-
-	switch strings.TrimSpace(cfg.Spec.Preset) {
+// Load resolves the message spec from a config. A spec value that is not a
+// known preset is treated as a path to a moov-io/iso8583 JSON spec, resolved
+// relative to baseDir.
+func Load(baseDir string, cfg config.Config) (*Spec, error) {
+	switch spec := strings.TrimSpace(cfg.Spec); spec {
 	case "", basei.StarterPreset:
 		return &Spec{
 			MessageSpec: basei.StarterMessageSpec(),
@@ -35,17 +34,17 @@ func Load(root string, cfg config.Config) (*Spec, error) {
 			Label:       "spec87ascii",
 		}, nil
 	default:
-		return nil, fmt.Errorf("unknown preset %q", cfg.Spec.Preset)
+		return loadJSONSpec(baseDir, spec)
 	}
 }
 
-func loadJSONSpec(root, path string) (*Spec, error) {
+func loadJSONSpec(baseDir, path string) (*Spec, error) {
 	resolved := path
 	if !filepath.IsAbs(resolved) {
-		resolved = filepath.Join(root, path)
+		resolved = filepath.Join(baseDir, path)
 	}
 	if ext := strings.ToLower(filepath.Ext(resolved)); ext != ".json" {
-		return nil, fmt.Errorf("unsupported spec file %q: only JSON is supported in the scaffold", path)
+		return nil, fmt.Errorf("unsupported spec file %q: only JSON is supported", path)
 	}
 
 	data, err := os.ReadFile(filepath.Clean(resolved))

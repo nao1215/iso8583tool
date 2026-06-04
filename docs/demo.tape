@@ -31,19 +31,19 @@ Enter
 Sleep 2s
 
 # 2. Inspect a 0100 auth request whose Field 55 carries an unknown EMV tag.
-Type "iso8583tool view --file examples/basei/0100-auth-request-unknown-tlv.hex"
+Type "iso8583tool view examples/basei/0100-auth-request-unknown-tlv.hex"
 Sleep 400ms
 Enter
 Sleep 3s
 
 # 3. Validate it: the unknown TLV tag is reported as a warning, not an error.
-Type "iso8583tool validate --file examples/basei/0100-auth-request-unknown-tlv.hex"
+Type "iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex"
 Sleep 400ms
 Enter
 Sleep 3s
 
 # 4. Build a packed message back from a JSON document.
-Type "iso8583tool write --input examples/basei/0100-auth-request.json"
+Type "iso8583tool convert examples/basei/0100-auth-request.json --output /tmp/req.hex"
 Sleep 400ms
 Enter
 Sleep 2500ms

@@ -86,8 +86,105 @@ func FieldMeaning(path, value string) (string, bool) {
 		}
 	case "55.9F27": // Cryptogram Information Data
 		return cryptogramInfo(value)
+	case "7": // Transmission date & time MMDDhhmmss
+		return formatStamp(value, "MM-DD hh:mm:ss", []int{2, 2, 2, 2, 2})
+	case "12": // Local transaction time hhmmss
+		return formatStamp(value, "hh:mm:ss", []int{2, 2, 2})
+	case "13": // Local transaction date MMDD
+		return formatStamp(value, "MM-DD", []int{2, 2})
+	case "14": // Expiration date YYMM
+		return formatStamp(value, "20YY-MM", []int{2, 2})
+	case "55.9A": // EMV transaction date YYMMDD
+		return formatStamp(value, "20YY-MM-DD", []int{2, 2, 2})
 	}
 	return "", false
+}
+
+// formatStamp renders a fixed-width numeric date/time by slicing the value into
+// the given segment widths and substituting them, left to right, into the
+// placeholder tokens (YY, MM, DD, hh, mm, ss) found in the layout.
+func formatStamp(value, layout string, widths []int) (string, bool) {
+	value = strings.TrimSpace(value)
+	total := 0
+	for _, w := range widths {
+		total += w
+	}
+	value = leftPad(value, total)
+	if len(value) != total {
+		return "", false
+	}
+
+	segments := make([]string, len(widths))
+	pos := 0
+	for i, w := range widths {
+		segments[i] = value[pos : pos+w]
+		pos += w
+	}
+
+	var out strings.Builder
+	seg := 0
+	for i := 0; i < len(layout); {
+		if i+2 <= len(layout) && seg < len(segments) && isStampToken(layout[i:i+2]) {
+			out.WriteString(segments[seg])
+			seg++
+			i += 2
+			continue
+		}
+		out.WriteByte(layout[i])
+		i++
+	}
+	return out.String(), true
+}
+
+func isStampToken(tok string) bool {
+	switch tok {
+	case "YY", "MM", "DD", "hh", "mm", "ss":
+		return true
+	default:
+		return false
+	}
+}
+
+// FormatAmount renders a minor-unit amount using the currency's decimal
+// exponent, for example ("000000005000", "392") -> "JPY 5000" and
+// ("000000005000", "840") -> "USD 50.00".
+func FormatAmount(amount, currencyNumeric string) (string, bool) {
+	alpha, ok := CurrencyAlpha(currencyNumeric)
+	if !ok {
+		return "", false
+	}
+	digits := strings.TrimLeft(strings.TrimSpace(amount), "0")
+	if digits == "" {
+		digits = "0"
+	}
+	exp := currencyExponent(normalizeNumeric(currencyNumeric))
+	if exp == 0 {
+		return alpha + " " + digits, true
+	}
+	for len(digits) <= exp {
+		digits = "0" + digits
+	}
+	whole := digits[:len(digits)-exp]
+	frac := digits[len(digits)-exp:]
+	return alpha + " " + whole + "." + frac, true
+}
+
+// CurrencyAlpha returns the ISO 4217 alpha code (e.g. "JPY") for a numeric code.
+func CurrencyAlpha(currencyNumeric string) (string, bool) {
+	name, ok := currencyCodes[normalizeNumeric(currencyNumeric)]
+	if !ok {
+		return "", false
+	}
+	return strings.Fields(name)[0], true
+}
+
+func currencyExponent(numeric string) int {
+	switch numeric {
+	case "392", "410": // JPY, KRW have no minor unit
+		return 0
+	default:
+		return 2
+	}
 }
 
 func transactionType(value string) (string, bool) {

@@ -15,7 +15,6 @@ import (
 	"github.com/nao1215/iso8583tool/internal/config"
 	"github.com/nao1215/iso8583tool/internal/messageio"
 	"github.com/nao1215/iso8583tool/internal/messagespec"
-	"github.com/nao1215/iso8583tool/internal/project"
 	"github.com/nao1215/iso8583tool/internal/render"
 	"github.com/nao1215/iso8583tool/internal/service"
 )
@@ -40,20 +39,21 @@ func resolveVersion() string {
 type App struct {
 	stdout  io.Writer
 	stderr  io.Writer
+	stdin   io.Reader
 	workDir string
 }
 
 type resolvedContext struct {
-	root      string
 	specLabel string
 	spec      *messagespec.Spec
 	catalog   basei.ExtensionCatalog
 }
 
-func NewApp(stdout, stderr io.Writer, workDir string) *App {
+func NewApp(stdout, stderr io.Writer, stdin io.Reader, workDir string) *App {
 	return &App{
 		stdout:  stdout,
 		stderr:  stderr,
+		stdin:   stdin,
 		workDir: workDir,
 	}
 }
@@ -71,12 +71,10 @@ func (a *App) Run(args []string) int {
 		}
 		a.printRootHelp()
 		return 0
-	case "init":
-		return a.runInit(args[1:])
 	case "view":
 		return a.runView(args[1:])
-	case "write":
-		return a.runWrite(args[1:])
+	case "convert":
+		return a.runConvert(args[1:])
 	case "validate":
 		return a.runValidate(args[1:])
 	case "sample":
@@ -96,7 +94,7 @@ func (a *App) runHelp(args []string) int {
 	rest := args[1:]
 
 	switch name {
-	case "init", "view", "write", "validate", "sample":
+	case "view", "convert", "validate", "sample":
 		forwarded := make([]string, 0, len(args)+1)
 		forwarded = append(forwarded, args...)
 		forwarded = append(forwarded, "--help")
@@ -116,88 +114,65 @@ func (a *App) runHelp(args []string) int {
 	}
 }
 
-func (a *App) runInit(args []string) int {
-	flagSet := newFlagSet("init", a.stderr)
-	name := flagSet.String("name", "", "project name (defaults to the directory name)")
-	dir := flagSet.String("dir", "", "directory to initialize (defaults to the current directory)")
-	flagSet.Usage = func() {
-		writeLine(a.stderr, "Create an iso8583tool workspace with a starter BASE I overlay.")
-		writeLine(a.stderr, "Usage: iso8583tool init [--name NAME] [--dir PATH]")
-		printFlagDefaults(a.stderr, flagSet)
-	}
-	if code, ok := parseArgs(flagSet, args); !ok {
-		return code
-	}
-	if flagSet.NArg() != 0 {
-		flagSet.Usage()
-		return 1
-	}
-
-	target := a.workDir
-	if strings.TrimSpace(*dir) != "" {
-		if filepath.IsAbs(*dir) {
-			target = *dir
-		} else {
-			target = filepath.Join(a.workDir, *dir)
-		}
-	}
-
-	result, err := project.Init(target, *name)
-	if err != nil {
-		writeLine(a.stderr, err)
-		return 1
-	}
-
-	writeLine(a.stdout, "Initialized iso8583tool project.")
-	writef(a.stdout, "Config: %s\n", result.ConfigPath)
-	writef(a.stdout, "Specs: %s\n", result.SpecsDir)
-	writef(a.stdout, "Examples: %s\n", result.ExamplesDir)
-	writef(a.stdout, "Messages: %s\n", result.MessagesDir)
-	return 0
-}
-
 func (a *App) runView(args []string) int {
 	flagSet := newFlagSet("view", a.stderr)
-	specPath := flagSet.String("spec", "", "path to a moov-io/iso8583 JSON spec file")
-	filePath := flagSet.String("file", "", "path to an input message file")
-	raw := flagSet.String("raw", "", "inline input message")
+	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "describe", "output format: describe or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	var filters multiFlag
+	flagSet.Var(&filters, "filter", "only show this field path (repeatable, e.g. --filter 39 --filter 55.9F02)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Inspect an ISO8583 message with the configured spec.")
-		writeLine(a.stderr, "Usage: iso8583tool view (--file PATH | --raw DATA) [--spec PATH] [--encoding hex|raw] [--format describe|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--config PATH] [--filter PATH ...] [--encoding hex|raw] [--format describe|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, args); !ok {
+	if code, ok := parseArgs(flagSet, reorder(args, viewValueFlags)); !ok {
 		return code
 	}
-	if flagSet.NArg() != 0 {
+	target := flagSet.Arg(0)
+	if flagSet.NArg() > 1 {
 		flagSet.Usage()
 		return 1
 	}
 
-	ctx, err := a.loadContext(*specPath)
+	ctx, err := a.loadContext(*configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	input, err := messageio.ReadRawInput(*filePath, *raw, *encoding)
+	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	pal := a.palette(*color, *format)
-	result, err := service.ViewMessage(input, ctx.spec.MessageSpec, ctx.catalog, *format, pal)
+	pal := a.palette(colorMode(*color, *noColor), *format)
+	result, err := service.ViewMessage(input, ctx.spec.MessageSpec, ctx.catalog, *format, filters, pal)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
+	}
+
+	// Filtered output is just the matched fields, kept terse for piping.
+	if len(filters) > 0 {
+		_, _ = io.WriteString(a.stdout, result.Body)
+		if !strings.HasSuffix(result.Body, "\n") {
+			_, _ = io.WriteString(a.stdout, "\n")
+		}
+		return 0
 	}
 
 	if *format == "describe" {
-		writef(a.stdout, "%s %s\n\n", pal.Dim("Spec:"), pal.Bold(ctx.specLabel))
+		writef(a.stdout, "%s %s\n", pal.Dim("Spec:"), pal.Bold(ctx.specLabel))
+		if result.Summary != "" {
+			writef(a.stdout, "%s %s\n", pal.Dim("Summary:"), pal.Cyan(result.Summary))
+		}
+		_, _ = io.WriteString(a.stdout, "\n")
 	}
 	_, _ = io.WriteString(a.stdout, result.Body)
 	if !strings.HasSuffix(result.Body, "\n") {
@@ -220,72 +195,87 @@ func (a *App) runView(args []string) int {
 	return 0
 }
 
-// palette resolves the --color flag against stdout. JSON output is never
-// colorized so it stays machine-parseable.
-func (a *App) palette(mode, format string) render.Palette {
-	if format == "json" {
-		return render.NewPalette(false)
-	}
-	out, _ := a.stdout.(*os.File)
-	return render.NewPalette(render.ResolveColor(mode, out))
-}
-
-func strategyColor(pal render.Palette, strategy string) string {
-	switch strategy {
-	case "tlv":
-		return pal.Cyan(strategy)
-	case "opaque":
-		return pal.Yellow(strategy)
-	case "positional":
-		return pal.Blue(strategy)
-	case "bitmap":
-		return pal.Magenta(strategy)
-	default:
-		return strategy
-	}
-}
-
-func (a *App) runWrite(args []string) int {
-	flagSet := newFlagSet("write", a.stderr)
-	specPath := flagSet.String("spec", "", "path to a moov-io/iso8583 JSON spec file")
-	inputPath := flagSet.String("input", "", "path to a message document JSON file")
-	outputPath := flagSet.String("output", "", "path to write the packed message")
-	encoding := flagSet.String("encoding", "hex", "output encoding: hex or raw")
+func (a *App) runConvert(args []string) int {
+	flagSet := newFlagSet("convert", a.stderr)
+	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	outputPath := flagSet.String("output", "", "path to write the result")
+	encoding := flagSet.String("encoding", "hex", "message-side encoding: hex or raw")
+	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Build an ISO8583 message from a JSON document.")
-		writeLine(a.stderr, "Usage: iso8583tool write --input PATH [--output PATH] [--spec PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "Convert between a packed BASE I message and a JSON document (auto-detected).")
+		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--config PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "JSON input is packed to a message; a message is unpacked to a JSON document.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, args); !ok {
+	if code, ok := parseArgs(flagSet, reorder(args, convertValueFlags)); !ok {
 		return code
 	}
-	if flagSet.NArg() != 0 || strings.TrimSpace(*inputPath) == "" {
+	target := flagSet.Arg(0)
+	if flagSet.NArg() > 1 {
 		flagSet.Usage()
 		return 1
 	}
 
-	ctx, err := a.loadContext(*specPath)
+	ctx, err := a.loadContext(*configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	doc, err := messageio.LoadDocument(*inputPath)
+	source, err := messageio.ReadSource(target, "", a.inputStdin(target, ""))
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	result, err := service.WriteMessage(doc, ctx.spec.MessageSpec)
+	direction, err := convertDirection(*to, source)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	out, err := messageio.EncodeOutput(result.Raw, *encoding)
-	if err != nil {
-		writeLine(a.stderr, err)
-		return 1
+	var out []byte
+	var summary string
+	switch direction {
+	case "hex": // JSON document -> packed message
+		doc, err := messageio.ParseDocument(source)
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		result, err := service.WriteMessage(doc, ctx.spec.MessageSpec)
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		encoded, err := messageio.EncodeOutput(result.Raw, *encoding)
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		if *encoding == "hex" {
+			encoded = append(encoded, '\n')
+		}
+		out = encoded
+		summary = fmt.Sprintf("packed %d fields to %s", result.FieldCount, *encoding)
+	case "json": // packed message -> JSON document
+		msgRaw, err := messageio.DecodeInput(source, *encoding)
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		doc, err := service.MessageToDocument(ctx.spec.MessageSpec, msgRaw)
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		data, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		out = append(data, '\n')
+		summary = fmt.Sprintf("unpacked message %s to a JSON document", doc.MTI)
 	}
 
 	if strings.TrimSpace(*outputPath) != "" {
@@ -293,46 +283,63 @@ func (a *App) runWrite(args []string) int {
 			writeLine(a.stderr, err)
 			return 1
 		}
-		writef(a.stdout, "Wrote %d fields with %s using %s.\n", result.FieldCount, ctx.specLabel, *encoding)
+		writef(a.stdout, "Converted with %s (%s).\n", ctx.specLabel, summary)
 		writef(a.stdout, "Output: %s\n", *outputPath)
 		return 0
 	}
 
 	_, _ = a.stdout.Write(out)
-	if *encoding == "hex" {
-		_, _ = io.WriteString(a.stdout, "\n")
-	}
 	return 0
+}
+
+// convertDirection returns the output format: "hex" (pack a document) or
+// "json" (unpack a message). An empty `to` auto-detects from the input.
+func convertDirection(to string, source []byte) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(to)) {
+	case "hex":
+		return "hex", nil
+	case "json":
+		return "json", nil
+	case "":
+		if messageio.LooksLikeJSON(source) {
+			return "hex", nil
+		}
+		return "json", nil
+	default:
+		return "", fmt.Errorf("unsupported --to %q (use json or hex)", to)
+	}
 }
 
 func (a *App) runValidate(args []string) int {
 	flagSet := newFlagSet("validate", a.stderr)
-	specPath := flagSet.String("spec", "", "path to a moov-io/iso8583 JSON spec file")
-	filePath := flagSet.String("file", "", "path to an input message file")
-	raw := flagSet.String("raw", "", "inline input message")
+	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate (--file PATH | --raw DATA) [--spec PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, args); !ok {
+	if code, ok := parseArgs(flagSet, reorder(args, validateValueFlags)); !ok {
 		return code
 	}
-	if flagSet.NArg() != 0 {
+	target := flagSet.Arg(0)
+	if flagSet.NArg() > 1 {
 		flagSet.Usage()
 		return 1
 	}
 
-	ctx, err := a.loadContext(*specPath)
+	ctx, err := a.loadContext(*configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
-	input, err := messageio.ReadRawInput(*filePath, *raw, *encoding)
+	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -341,7 +348,7 @@ func (a *App) runValidate(args []string) int {
 	report := service.ValidateMessage(input, ctx.spec.MessageSpec, ctx.specLabel, ctx.catalog)
 	switch *format {
 	case "text":
-		a.printValidationReport(report, a.palette(*color, *format))
+		a.printValidationReport(report, a.palette(colorMode(*color, *noColor), *format))
 	case "json":
 		data, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
@@ -362,23 +369,23 @@ func (a *App) runValidate(args []string) int {
 
 func (a *App) runSample(args []string) int {
 	flagSet := newFlagSet("sample", a.stderr)
-	name := flagSet.String("name", "", "sample name to export")
 	format := flagSet.String("format", "json", "sample format: json or hex")
 	outputPath := flagSet.String("output", "", "path to write the exported sample")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "List or export built-in BASE I starter samples.")
-		writeLine(a.stderr, "Usage: iso8583tool sample [--name SAMPLE] [--format json|hex] [--output PATH]")
+		writeLine(a.stderr, "Usage: iso8583tool sample [NAME] [--format json|hex] [--output PATH]")
 		printFlagDefaults(a.stderr, flagSet)
 	}
-	if code, ok := parseArgs(flagSet, args); !ok {
+	if code, ok := parseArgs(flagSet, reorder(args, sampleValueFlags)); !ok {
 		return code
 	}
-	if flagSet.NArg() != 0 {
+	if flagSet.NArg() > 1 {
 		flagSet.Usage()
 		return 1
 	}
+	name := flagSet.Arg(0)
 
-	if strings.TrimSpace(*name) == "" {
+	if strings.TrimSpace(name) == "" {
 		writeLine(a.stdout, "Available samples:")
 		for _, sample := range basei.StarterSamples() {
 			writef(a.stdout, "- %s: %s\n", sample.Name, sample.Summary)
@@ -386,9 +393,9 @@ func (a *App) runSample(args []string) int {
 		return 0
 	}
 
-	sample, ok := basei.LookupSample(strings.TrimSpace(*name))
+	sample, ok := basei.LookupSample(strings.TrimSpace(name))
 	if !ok {
-		writef(a.stderr, "unknown sample %q\n", *name)
+		writef(a.stderr, "unknown sample %q\n", name)
 		return 1
 	}
 
@@ -437,60 +444,92 @@ func (a *App) renderSample(sample basei.Sample, format string) ([]byte, error) {
 	}
 }
 
-func (a *App) loadContext(overrideSpec string) (resolvedContext, error) {
-	root, cfg, found, err := project.LoadOptional(a.workDir)
-	if err != nil {
-		return resolvedContext{}, err
-	}
-	if !found {
-		root = a.workDir
-		cfg = config.Default(filepath.Base(a.workDir))
-	}
-	if strings.TrimSpace(overrideSpec) != "" {
-		cfg.Spec.MessageSpec = overrideSpec
+func (a *App) loadContext(configPath string) (resolvedContext, error) {
+	cfg := config.Default()
+	baseDir := a.workDir
+	if path := strings.TrimSpace(configPath); path != "" {
+		loaded, err := config.Load(path)
+		if err != nil {
+			return resolvedContext{}, err
+		}
+		cfg = loaded
+		baseDir = filepath.Dir(path)
 	}
 
-	specResult, err := messagespec.Load(root, cfg)
+	specResult, err := messagespec.Load(baseDir, cfg)
 	if err != nil {
 		return resolvedContext{}, err
-	}
-
-	catalog := basei.DefaultExtensionCatalog()
-	if path := strings.TrimSpace(cfg.Spec.ExtensionCatalog); path != "" {
-		resolved := path
-		if !filepath.IsAbs(resolved) {
-			resolved = filepath.Join(root, path)
-		}
-		loaded, loadErr := basei.LoadCatalog(resolved)
-		if loadErr == nil {
-			catalog = loaded
-		} else if !errors.Is(loadErr, os.ErrNotExist) {
-			return resolvedContext{}, loadErr
-		}
 	}
 
 	return resolvedContext{
-		root:      root,
 		specLabel: specResult.Label,
 		spec:      specResult,
-		catalog:   catalog,
+		catalog:   cfg.Catalog(),
 	}, nil
 }
 
+// inputStdin returns the stdin reader to use, or nil when no file/raw is given
+// but stdin is an interactive terminal (so we error instead of blocking).
+func (a *App) inputStdin(target, raw string) io.Reader {
+	if target == "-" {
+		return a.stdin
+	}
+	if strings.TrimSpace(target) == "" && strings.TrimSpace(raw) == "" {
+		if f, ok := a.stdin.(*os.File); ok && render.IsTerminal(f) {
+			return nil
+		}
+	}
+	return a.stdin
+}
+
+// palette resolves the color mode against stdout. JSON output is never
+// colorized so it stays machine-parseable.
+func (a *App) palette(mode, format string) render.Palette {
+	if format == "json" {
+		return render.NewPalette(false)
+	}
+	out, _ := a.stdout.(*os.File)
+	return render.NewPalette(render.ResolveColor(mode, out))
+}
+
+func colorMode(mode string, noColor bool) string {
+	if noColor {
+		return "never"
+	}
+	return mode
+}
+
+func strategyColor(pal render.Palette, strategy string) string {
+	switch strategy {
+	case "tlv":
+		return pal.Cyan(strategy)
+	case "opaque":
+		return pal.Yellow(strategy)
+	case "positional":
+		return pal.Blue(strategy)
+	case "bitmap":
+		return pal.Magenta(strategy)
+	default:
+		return strategy
+	}
+}
+
 func (a *App) printRootHelp() {
-	writeLine(a.stderr, "BASE I oriented ISO8583 viewer, writer, and validator.")
+	writeLine(a.stderr, "BASE I oriented ISO8583 viewer, converter, and validator.")
 	writeLine(a.stderr, "")
 	writeLine(a.stderr, "Usage:")
-	writeLine(a.stderr, "  iso8583tool <command> [flags]")
+	writeLine(a.stderr, "  iso8583tool <command> [arguments] [flags]")
 	writeLine(a.stderr, "")
 	writeLine(a.stderr, "Commands:")
-	writeLine(a.stderr, "  init       Create a workspace with starter config, examples, and extension catalog")
 	writeLine(a.stderr, "  view       Unpack and inspect a message")
-	writeLine(a.stderr, "  write      Build a message from JSON input")
+	writeLine(a.stderr, "  convert    Convert between a packed message and a JSON document")
 	writeLine(a.stderr, "  validate   Check a message against the configured spec")
 	writeLine(a.stderr, "  sample     List or export built-in BASE I starter samples")
 	writeLine(a.stderr, "  version    Print the version")
 	writeLine(a.stderr, "  help       Show command help")
+	writeLine(a.stderr, "")
+	writeLine(a.stderr, "Messages can be read from a file, '-', or stdin. Pass a spec or extension")
+	writeLine(a.stderr, "catalog with --config PATH; without it the built-in basei-starter is used.")
 }
 
 func (a *App) printValidationReport(report service.ValidationReport, pal render.Palette) {
@@ -506,6 +545,9 @@ func (a *App) printValidationReport(report service.ValidationReport, pal render.
 			line += "  " + pal.Cyan("→ "+report.MTIDescription)
 		}
 		writeLine(a.stdout, line)
+	}
+	if report.Summary != "" {
+		writef(a.stdout, "%s %s\n", pal.Dim("Summary:"), pal.Cyan(report.Summary))
 	}
 	if len(report.Decoded) > 0 {
 		writef(a.stdout, "\n%s\n", pal.BoldCyan("Decoded Fields:"))
@@ -553,6 +595,50 @@ func severityColor(pal render.Palette, severity string) string {
 	default:
 		return pal.Dim(severity)
 	}
+}
+
+// multiFlag collects a repeatable string flag (e.g. --filter).
+type multiFlag []string
+
+func (m *multiFlag) String() string { return strings.Join(*m, ",") }
+func (m *multiFlag) Set(v string) error {
+	*m = append(*m, v)
+	return nil
+}
+
+// Value-taking flags per command, used by reorder so positional arguments may
+// appear before or after flags.
+var (
+	viewValueFlags     = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true, "filter": true}
+	validateValueFlags = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true}
+	convertValueFlags  = map[string]bool{"config": true, "output": true, "encoding": true, "to": true}
+	sampleValueFlags   = map[string]bool{"format": true, "output": true}
+)
+
+// reorder moves flags ahead of positional arguments so the stdlib flag parser
+// (which stops at the first non-flag) accepts both "view msg --json" and
+// "view --json msg". valueFlags lists flags that consume the next token.
+func reorder(args []string, valueFlags map[string]bool) []string {
+	flags := make([]string, 0, len(args))
+	positionals := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			positionals = append(positionals, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			flags = append(flags, arg)
+			name := strings.TrimLeft(arg, "-")
+			if !strings.Contains(name, "=") && valueFlags[name] && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		positionals = append(positionals, arg)
+	}
+	return append(flags, positionals...)
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {

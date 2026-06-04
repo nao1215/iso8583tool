@@ -13,6 +13,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := cmd.NewApp(os.Stdout, os.Stderr, workDir)
+	app := cmd.NewApp(os.Stdout, os.Stderr, os.Stdin, workDir)
 	os.Exit(app.Run(os.Args[1:]))
 }

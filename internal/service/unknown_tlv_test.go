@@ -13,18 +13,22 @@ import (
 )
 
 // unknownTLVDocument mirrors examples/basei/0100-auth-request-unknown-tlv.json.
-// Field 55 is supplied as one raw BER-TLV blob so it can carry a tag (DF8129)
-// that is intentionally absent from the basei-starter known-tag set.
+// Field 55 is supplied per tag, including DF8129, which is intentionally absent
+// from the basei-starter known-tag set, so unknown-tag editing can be tested.
 func unknownTLVDocument() messageio.Document {
 	return messageio.Document{
 		MTI: "0100",
 		Fields: map[string]string{
-			"2":  "4761739001010010",
+			"2":  "4111111111111111",
 			"11": "123456",
 			"41": "TERMID01",
 		},
 		BinaryFields: map[string]string{
-			"55": "9F02060000000050009F360200349505800000800082023900DF812904AABBCCDD",
+			"55.82":     "3900",
+			"55.95":     "8000008000",
+			"55.9F02":   "000000005000",
+			"55.9F36":   "0034",
+			"55.DF8129": "AABBCCDD",
 		},
 	}
 }
@@ -32,7 +36,7 @@ func unknownTLVDocument() messageio.Document {
 func TestUnknownTLVRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	spec, err := messagespec.Load(".", config.Default("demo"))
+	spec, err := messagespec.Load(".", config.Default())
 	if err != nil {
 		t.Fatalf("messagespec.Load returned error: %v", err)
 	}
@@ -58,7 +62,7 @@ func TestUnknownTLVRoundTrip(t *testing.T) {
 	}
 
 	// view must list the preserved unknown tag too.
-	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", render.NewPalette(false))
+	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false))
 	if err != nil {
 		t.Fatalf("ViewMessage returned error: %v", err)
 	}

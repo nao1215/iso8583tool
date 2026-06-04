@@ -18,6 +18,11 @@ func LoadDocument(path string) (Document, error) {
 	if err != nil {
 		return Document{}, err
 	}
+	return ParseDocument(data)
+}
+
+// ParseDocument decodes and validates a message document from JSON bytes.
+func ParseDocument(data []byte) (Document, error) {
 	var doc Document
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return Document{}, err
@@ -26,6 +31,22 @@ func LoadDocument(path string) (Document, error) {
 		return Document{}, err
 	}
 	return doc, nil
+}
+
+// LooksLikeJSON reports whether the raw input is a JSON document (used to pick
+// the convert direction).
+func LooksLikeJSON(data []byte) bool {
+	for _, b := range data {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func SaveDocument(path string, doc Document) error {

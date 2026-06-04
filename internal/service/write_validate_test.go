@@ -12,7 +12,7 @@ import (
 func TestWriteValidateAndView(t *testing.T) {
 	t.Parallel()
 
-	spec, err := messagespec.Load(".", config.Default("demo"))
+	spec, err := messagespec.Load(".", config.Default())
 	if err != nil {
 		t.Fatalf("messagespec.Load returned error: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestWriteValidateAndView(t *testing.T) {
 		t.Fatal("expected extension notices for fields 48, 55, and 62")
 	}
 
-	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", render.NewPalette(false))
+	viewResult, err := ViewMessage(writeResult.Raw, spec.MessageSpec, basei.DefaultExtensionCatalog(), "describe", nil, render.NewPalette(false))
 	if err != nil {
 		t.Fatalf("ViewMessage returned error: %v", err)
 	}

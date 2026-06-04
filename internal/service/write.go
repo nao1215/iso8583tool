@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
+	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
@@ -34,7 +35,6 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 			}
 			continue
 		}
-
 		id, err := strconv.Atoi(path)
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("invalid field id %q", path)
@@ -44,6 +44,10 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		}
 	}
 
+	// TLV subtags such as "55.9F02" are accumulated per composite field so that
+	// known and unknown tags are packed together, preserving unknown tags.
+	tlvGroups := map[int]map[string][]byte{}
+
 	binaryPaths := sortedMapKeys(doc.BinaryFields)
 	for _, path := range binaryPaths {
 		rawValue := strings.ReplaceAll(doc.BinaryFields[path], " ", "")
@@ -51,6 +55,15 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("decode binary field %s: %w", path, err)
 		}
+
+		if topID, tag, ok := splitTLVPath(path); ok && isTLVComposite(spec, topID) {
+			if tlvGroups[topID] == nil {
+				tlvGroups[topID] = map[string][]byte{}
+			}
+			tlvGroups[topID][tag] = data
+			continue
+		}
+
 		if strings.Contains(path, ".") {
 			if err := msg.MarshalPath(path, data); err != nil {
 				return WriteResult{}, fmt.Errorf("set binary %s: %w", path, err)
@@ -67,6 +80,16 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		}
 	}
 
+	for _, id := range sortedIntKeys(tlvGroups) {
+		blob, err := encodeTLV(tlvGroups[id])
+		if err != nil {
+			return WriteResult{}, fmt.Errorf("field %d: %w", id, err)
+		}
+		if err := msg.BinaryField(id, blob); err != nil {
+			return WriteResult{}, fmt.Errorf("set field %d: %w", id, err)
+		}
+	}
+
 	packed, err := msg.Pack()
 	if err != nil {
 		return WriteResult{}, err
@@ -77,11 +100,83 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 	}, nil
 }
 
+// splitTLVPath splits a flat TLV path such as "55.9F02" into its field id and
+// tag. Deeper paths (for example "127.25.1") are not treated as TLV.
+func splitTLVPath(path string) (id int, tag string, ok bool) {
+	parts := strings.Split(path, ".")
+	if len(parts) != 2 {
+		return 0, "", false
+	}
+	id, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, "", false
+	}
+	return id, parts[1], true
+}
+
+// isTLVComposite reports whether the field is a BER-TLV composite (e.g. F55).
+func isTLVComposite(spec *iso8583.MessageSpec, id int) bool {
+	f, ok := spec.Fields[id]
+	if !ok {
+		return false
+	}
+	composite, ok := f.(*field.Composite)
+	if !ok {
+		return false
+	}
+	s := composite.Spec()
+	return s.Tag != nil && s.Tag.Enc != nil
+}
+
+// encodeTLV builds a BER-TLV byte stream from tag->value entries. Tag order is
+// canonicalized again by moov on Pack, so any stable order is fine here.
+func encodeTLV(entries map[string][]byte) ([]byte, error) {
+	tags := make([]string, 0, len(entries))
+	for tag := range entries {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+
+	var out []byte
+	for _, tag := range tags {
+		tagBytes, err := hex.DecodeString(tag)
+		if err != nil || len(tagBytes) == 0 {
+			return nil, fmt.Errorf("invalid TLV tag %q", tag)
+		}
+		value := entries[tag]
+		out = append(out, tagBytes...)
+		out = append(out, encodeBERLength(len(value))...)
+		out = append(out, value...)
+	}
+	return out, nil
+}
+
+func encodeBERLength(n int) []byte {
+	if n < 0x80 {
+		return []byte{byte(n)}
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte(n & 0xff)}, b...)
+		n >>= 8
+	}
+	return append([]byte{byte(0x80 | len(b))}, b...)
+}
+
 func sortedMapKeys(values map[string]string) []string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	return keys
+}
+
+func sortedIntKeys[V any](values map[int]V) []int {
+	keys := make([]int, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
 	return keys
 }

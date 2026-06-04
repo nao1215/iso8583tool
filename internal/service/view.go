@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/moov-io/iso8583"
@@ -18,6 +20,7 @@ import (
 
 type ViewResult struct {
 	Body        string
+	Summary     string
 	Extensions  []basei.ExtensionField
 	UnknownTags []UnknownTag
 	Decoded     []DecodedField
@@ -25,20 +28,30 @@ type ViewResult struct {
 
 // DecodedField is a coded value translated into a human meaning.
 type DecodedField struct {
-	Path    string `json:"path"`
-	Value   string `json:"value"`
-	Meaning string `json:"meaning"`
+	Path        string `json:"path"`
+	Description string `json:"description,omitempty"`
+	Value       string `json:"value"`
+	Meaning     string `json:"meaning,omitempty"`
 }
 
-func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionCatalog, format string, pal render.Palette) (ViewResult, error) {
+func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionCatalog, format string, filters []string, pal render.Palette) (ViewResult, error) {
 	msg := iso8583.NewMessage(spec)
 	if err := msg.Unpack(raw); err != nil {
-		return ViewResult{}, err
+		return ViewResult{}, errors.New(diagnoseUnpack(err, raw).String())
 	}
 
 	unknownTags := collectUnknownTags(msg)
 	extensions := activeExtensions(msg.GetFields(), catalog)
 	decoded := DecodeFields(msg)
+	summary := Summarize(msg)
+
+	if len(filters) > 0 {
+		body, err := renderFiltered(msg, filters, format, pal)
+		if err != nil {
+			return ViewResult{}, err
+		}
+		return ViewResult{Body: body, Summary: summary, Decoded: decoded}, nil
+	}
 
 	switch format {
 	case "", "describe", "text":
@@ -49,6 +62,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		body := colorizeDescribe(buf.String(), pal)
 		return ViewResult{
 			Body:        body,
+			Summary:     summary,
 			Extensions:  extensions,
 			UnknownTags: unknownTags,
 			Decoded:     decoded,
@@ -56,11 +70,13 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	case "json":
 		payload := struct {
 			Message     *iso8583.Message       `json:"message"`
+			Summary     string                 `json:"summary,omitempty"`
 			Extensions  []basei.ExtensionField `json:"extension_fields,omitempty"`
 			UnknownTags []UnknownTag           `json:"unknown_tags,omitempty"`
 			Decoded     []DecodedField         `json:"decoded,omitempty"`
 		}{
 			Message:     msg,
+			Summary:     summary,
 			Extensions:  extensions,
 			UnknownTags: unknownTags,
 			Decoded:     decoded,
@@ -71,6 +87,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		}
 		return ViewResult{
 			Body:        string(data),
+			Summary:     summary,
 			Extensions:  extensions,
 			UnknownTags: unknownTags,
 			Decoded:     decoded,
@@ -78,6 +95,118 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	default:
 		return ViewResult{}, fmt.Errorf("unsupported view format %q", format)
 	}
+}
+
+// Summarize builds a one-line, human-readable digest of a message.
+func Summarize(msg *iso8583.Message) string {
+	fields := msg.GetFields()
+	get := func(id int) (string, bool) {
+		f, ok := fields[id]
+		if !ok {
+			return "", false
+		}
+		s, err := f.String()
+		if err != nil {
+			return "", false
+		}
+		return s, true
+	}
+
+	var parts []string
+	if mti, err := msg.GetMTI(); err == nil && mti != "" {
+		parts = append(parts, mti)
+	}
+	if v, ok := get(39); ok {
+		if m, ok := annotate.FieldMeaning("39", v); ok {
+			parts = append(parts, m)
+		}
+	}
+	if amount, ok := get(4); ok {
+		currency, _ := get(49)
+		if s, ok := annotate.FormatAmount(amount, currency); ok {
+			parts = append(parts, s)
+		} else if trimmed := strings.TrimLeft(amount, "0"); trimmed != "" {
+			parts = append(parts, "amount "+trimmed)
+		}
+	}
+	if v, ok := get(11); ok {
+		parts = append(parts, "STAN "+v)
+	}
+	if v, ok := get(41); ok && strings.TrimSpace(v) != "" {
+		parts = append(parts, strings.TrimSpace(v))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// lookupPath resolves a dot-path to its leaf field, returning the spec
+// description and string value.
+func lookupPath(msg *iso8583.Message, path string) (description, value string, ok bool) {
+	parts := strings.Split(strings.TrimSpace(path), ".")
+	id, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return "", "", false
+	}
+	f, present := msg.GetFields()[id]
+	if !present {
+		return "", "", false
+	}
+	for _, part := range parts[1:] {
+		container, ok := f.(interface {
+			GetSubfields() map[string]field.Field
+		})
+		if !ok {
+			return "", "", false
+		}
+		sub, present := container.GetSubfields()[part]
+		if !present {
+			return "", "", false
+		}
+		f = sub
+	}
+	str, err := f.String()
+	if err != nil {
+		return "", "", false
+	}
+	return f.Spec().Description, str, true
+}
+
+// renderFiltered renders only the requested field paths.
+func renderFiltered(msg *iso8583.Message, filters []string, format string, pal render.Palette) (string, error) {
+	matched := make([]DecodedField, 0, len(filters))
+	var missing []string
+	for _, path := range filters {
+		desc, value, ok := lookupPath(msg, path)
+		if !ok {
+			missing = append(missing, path)
+			continue
+		}
+		entry := DecodedField{Path: path, Description: desc, Value: value}
+		if meaning, ok := annotate.FieldMeaning(path, strings.TrimSpace(value)); ok {
+			entry.Meaning = meaning
+		}
+		matched = append(matched, entry)
+	}
+
+	if format == "json" {
+		data, err := json.MarshalIndent(matched, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	var b strings.Builder
+	for _, m := range matched {
+		line := pal.Green("F"+m.Path) + " " + m.Description + ": " + pal.Yellow(m.Value)
+		if m.Meaning != "" {
+			line += "  " + pal.Cyan("→ "+m.Meaning)
+		}
+		b.WriteString(line + "\n")
+	}
+	for _, path := range missing {
+		b.WriteString(pal.Dim("F"+path+": <not present>") + "\n")
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
 }
 
 // DecodeFields walks the present fields and returns the ones whose coded value
