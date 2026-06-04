@@ -31,7 +31,9 @@ tools: ## Install developer tools (linter, coverage, shellspec for e2e)
 demo: build ## Regenerate the README GIF from docs/demo.tape (needs vhs)
 	@command -v vhs >/dev/null || { echo 'vhs is required: go install github.com/charmbracelet/vhs@latest'; exit 1; }
 	@cp examples/basei/0100-auth-request.hex /tmp/before.hex
-	@./$(APP) convert examples/basei/0100-auth-request.hex | sed 's/000000005000/000000009999/' | ./$(APP) convert > /tmp/after.hex
+	@./$(APP) convert examples/basei/0100-auth-request.hex \
+		| sed -e 's/4111111111111111/4222222222222222/g' -e 's/000000005000/000000009999/g' \
+		| ./$(APP) convert > /tmp/after.hex
 	@for tape in docs/*.tape; do vhs "$$tape"; done
 	@echo 'Regenerated docs/*.gif'
 
