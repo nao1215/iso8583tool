@@ -31,8 +31,9 @@ go.work.sum
 iso8583tool
 .gocache/
 
-# local reference clones
-doc/reference/
+# local docs working area (reference clones, design notes); README is the only
+# tracked documentation
+doc/
 
 # Editor/IDE
 # .idea/
