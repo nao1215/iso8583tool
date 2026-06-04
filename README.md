@@ -400,7 +400,9 @@ you want annotated, not just the one you are changing:
 
 `spec` in the config file is optional and can provide a default. The CLI
 `--spec` flag overrides it when both are present. `strategy` is `opaque`,
-`tlv`, `positional`, or `bitmap`.
+`tlv`, `positional`, or `bitmap`. Omitting the `extensions` key keeps the
+built-in catalog; setting it to an empty array (`"extensions": []`) disables
+the catalog entirely, so no private fields are annotated.
 
 A fuller worked overlay that relabels the private-field band (F48/F55/F62/F63/F127)
 for a fictional acquirer lives at

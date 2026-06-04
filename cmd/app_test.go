@@ -201,6 +201,60 @@ func TestViewFilterJSONObjectContract(t *testing.T) {
 	}
 }
 
+func TestViewFilterMTIKeepsDocumentShape(t *testing.T) {
+	t.Parallel()
+
+	// The MTI lives top-level in the document shape; it must never be copied
+	// into "fields" (which is reserved for dot-path field values). A filter on
+	// the MTI selects it via field 0 (or "mti") without duplicating it.
+	for _, filter := range []string{"mti", "0"} {
+		code, out, _ := runApp("", "view", example("0110-auth-response.hex"),
+			"--filter", filter, "--format", "json")
+		if code != 0 {
+			t.Fatalf("filtered json (--filter %s) failed: %d", filter, code)
+		}
+
+		var payload struct {
+			MTI            string            `json:"mti"`
+			Fields         map[string]string `json:"fields"`
+			MissingFilters []string          `json:"missing_filters"`
+		}
+		if err := json.Unmarshal([]byte(out), &payload); err != nil {
+			t.Fatalf("filtered json is not valid object json: %v\n%s", err, out)
+		}
+		if payload.MTI != "0110" {
+			t.Errorf("--filter %s: top-level mti = %q, want 0110\n%s", filter, payload.MTI, out)
+		}
+		if _, ok := payload.Fields["mti"]; ok {
+			t.Errorf("--filter %s: fields must not contain a pseudo-path \"mti\"\n%s", filter, out)
+		}
+		if _, ok := payload.Fields["0"]; ok {
+			t.Errorf("--filter %s: fields must not contain the MTI as field \"0\"\n%s", filter, out)
+		}
+		if len(payload.MissingFilters) != 0 {
+			t.Errorf("--filter %s: MTI filter should match, missing_filters = %#v\n%s", filter, payload.MissingFilters, out)
+		}
+	}
+}
+
+func TestEmptyExtensionsDisablesExtensionDisplay(t *testing.T) {
+	t.Parallel()
+
+	// An explicit empty extensions array replaces the built-in catalog, so the
+	// describe view must not show any Extension Field Strategy entries.
+	cfg := filepath.Join(t.TempDir(), "empty.json")
+	if err := os.WriteFile(cfg, []byte(`{"extensions":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := runApp("", "view", example("0110-auth-response.hex"), "--config", cfg, "--no-color")
+	if code != 0 {
+		t.Fatalf("view with empty extensions failed: %d\n%s", code, out)
+	}
+	if strings.Contains(out, "Extension Field Strategy:") {
+		t.Errorf("explicit empty extensions should suppress the extension strategy section\n%s", out)
+	}
+}
+
 // TestViewFilterJSONMissingFiltersAlwaysArray pins that missing_filters is always
 // present as an array (never null/absent), so jq pipelines are stable.
 func TestViewFilterJSONMissingFiltersAlwaysArray(t *testing.T) {

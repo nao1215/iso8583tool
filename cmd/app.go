@@ -697,14 +697,24 @@ func (a *App) readDoctorInput(target, raw, encoding string) ([]byte, string, err
 	if err != nil {
 		return nil, "", err
 	}
-	if messageio.LooksLikeHex(source) {
+	if !messageio.LooksLikeHex(source) {
+		return source, "raw", nil
+	}
+	decoded, derr := messageio.DecodeInput(source, "hex")
+	if derr != nil {
 		// A hex false positive (valid hex chars that are not actually a hex
 		// message) falls back to raw rather than erroring.
-		if decoded, derr := messageio.DecodeInput(source, "hex"); derr == nil {
-			return decoded, "hex", nil
-		}
+		return source, "raw", nil
 	}
-	return source, "raw", nil
+	// The bytes are valid hex, but an all-numeric raw ASCII capture satisfies
+	// that test just as well (every digit is a hex digit and the length is
+	// even). Decide by fit: read the bytes whichever way a built-in preset
+	// recognizes better, so a raw ASCII message is not silently decoded as
+	// packed hex. Ties keep the hex reading, the historical default.
+	if service.DiagnoseSpec(source).BestScore() > service.DiagnoseSpec(decoded).BestScore() {
+		return source, "raw", nil
+	}
+	return decoded, "hex", nil
 }
 
 func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal render.Palette) {
