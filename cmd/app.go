@@ -65,9 +65,18 @@ func (a *App) Run(args []string) int {
 	}
 
 	switch args[0] {
-	case "help", "-h", "--help":
-		if args[0] == "help" && len(args) > 1 {
+	case "help":
+		// "help" alone prints root help; "help <command>" describes a command.
+		if len(args) > 1 {
 			return a.runHelp(args[1:])
+		}
+		a.printRootHelp()
+		return 0
+	case "-h", "--help":
+		if len(args) > 1 {
+			writef(a.stderr, "%q takes no arguments; use \"iso8583tool help <command>\"\n\n", args[0])
+			a.printRootHelp()
+			return 1
 		}
 		a.printRootHelp()
 		return 0
@@ -80,6 +89,11 @@ func (a *App) Run(args []string) int {
 	case "sample":
 		return a.runSample(args[1:])
 	case "version", "-v", "--version":
+		if len(args) > 1 {
+			writef(a.stderr, "%q takes no arguments\n\n", args[0])
+			a.printRootHelp()
+			return 1
+		}
 		writef(a.stdout, "iso8583tool %s\n", resolveVersion())
 		return 0
 	default:
@@ -139,6 +153,12 @@ func (a *App) runView(args []string) int {
 		return 1
 	}
 
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
 	ctx, err := a.loadContext(*configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
@@ -151,7 +171,7 @@ func (a *App) runView(args []string) int {
 		return 1
 	}
 
-	pal := a.palette(colorMode(*color, *noColor), *format)
+	pal := a.palette(mode, *format)
 	result, err := service.ViewMessage(input, ctx.spec.MessageSpec, ctx.catalog, *format, filters, pal)
 	if err != nil {
 		writeLine(a.stderr, err)
@@ -334,6 +354,12 @@ func (a *App) runValidate(args []string) int {
 		return 1
 	}
 
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
 	ctx, err := a.loadContext(*configPath)
 	if err != nil {
 		writeLine(a.stderr, err)
@@ -349,7 +375,7 @@ func (a *App) runValidate(args []string) int {
 	report := service.ValidateMessage(input, ctx.spec.MessageSpec, ctx.specLabel, ctx.catalog)
 	switch *format {
 	case "text":
-		a.printValidationReport(report, a.palette(colorMode(*color, *noColor), *format))
+		a.printValidationReport(report, a.palette(mode, *format))
 	case "json":
 		data, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
@@ -493,11 +519,19 @@ func (a *App) palette(mode, format string) render.Palette {
 	return render.NewPalette(render.ResolveColor(mode, out))
 }
 
-func colorMode(mode string, noColor bool) string {
-	if noColor {
-		return "never"
+// resolveColorMode validates the --color value against the documented set and
+// combines it with --no-color. An unknown value is a hard error rather than a
+// silent fallback to "no color".
+func resolveColorMode(mode string, noColor bool) (string, error) {
+	switch mode {
+	case "auto", "always", "never":
+	default:
+		return "", fmt.Errorf("invalid --color %q (want auto, always, or never)", mode)
 	}
-	return mode
+	if noColor {
+		return "never", nil
+	}
+	return mode, nil
 }
 
 func strategyColor(pal render.Palette, strategy string) string {
@@ -619,6 +653,11 @@ var (
 // reorder moves flags ahead of positional arguments so the stdlib flag parser
 // (which stops at the first non-flag) accepts both "view msg --json" and
 // "view --json msg". valueFlags lists flags that consume the next token.
+//
+// Positionals are re-emitted after a literal "--" so the flag parser treats them
+// as operands even when they start with "-" (e.g. a file named "-response.hex"
+// passed as "view -- -response.hex"). Everything after the first "--" in the
+// input is positional, mirroring standard end-of-options behavior.
 func reorder(args []string, valueFlags map[string]bool) []string {
 	flags := make([]string, 0, len(args))
 	positionals := make([]string, 0, len(args))
@@ -639,7 +678,14 @@ func reorder(args []string, valueFlags map[string]bool) []string {
 		}
 		positionals = append(positionals, arg)
 	}
-	return append(flags, positionals...)
+	if len(positionals) == 0 {
+		return flags
+	}
+	result := make([]string, 0, len(flags)+1+len(positionals))
+	result = append(result, flags...)
+	result = append(result, "--")
+	result = append(result, positionals...)
+	return result
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {

@@ -50,4 +50,18 @@ Describe 'iso8583tool CLI surface'
       The stderr should include '--filter'
     End
   End
+
+  Describe 'root flags reject extra arguments'
+    It 'rejects --help with a trailing argument'
+      When run iso8583tool --help view
+      The status should be failure
+      The stderr should include 'takes no arguments'
+    End
+
+    It 'rejects --version with a trailing argument'
+      When run iso8583tool --version view
+      The status should be failure
+      The stderr should include 'takes no arguments'
+    End
+  End
 End

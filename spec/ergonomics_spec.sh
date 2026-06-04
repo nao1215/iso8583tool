@@ -48,6 +48,24 @@ Describe 'iso8583tool ergonomics'
       The status should be success
       The output should not include "$(printf '\033')"
     End
+
+    It 'rejects an unknown --color value instead of ignoring it'
+      When run iso8583tool view "$EXAMPLES/0110-auth-response.hex" --color banana
+      The status should be failure
+      The stderr should include 'invalid --color'
+    End
+  End
+
+  Describe 'end of options'
+    BeforeEach 'make_workdir'
+    AfterEach 'remove_workdir'
+
+    It 'treats a dash-leading filename after -- as a positional'
+      cp "$EXAMPLES/0110-auth-response.hex" "$WORK/-response.hex"
+      When run sh -c 'cd "$WORK" && "$ISO_BIN" view -- -response.hex'
+      The status should be success
+      The output should include 'MTI'
+    End
   End
 
   Describe 'config'

@@ -43,13 +43,14 @@ func (p Palette) BoldCyan(s string) string  { return p.wrap("1;36", s) }
 func (p Palette) BoldGreen(s string) string { return p.wrap("1;32", s) }
 
 // ResolveColor turns a --color flag value into a concrete on/off decision.
-// mode is one of "auto", "always", "never". For "auto", color is enabled only
+// mode is one of "auto", "always", "never" (callers validate the value first,
+// so any other input falls back to no color). For "auto", color is enabled only
 // when NO_COLOR is unset and out refers to a terminal (character device).
 func ResolveColor(mode string, out *os.File) bool {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "always", "force", "yes":
+	case "always":
 		return true
-	case "never", "off", "no":
+	case "never":
 		return false
 	case "", "auto":
 		if _, ok := os.LookupEnv("NO_COLOR"); ok {

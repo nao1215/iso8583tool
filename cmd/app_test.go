@@ -257,6 +257,89 @@ func TestInputSelectionErrors(t *testing.T) {
 	}
 }
 
+func TestReorderEndOfOptions(t *testing.T) {
+	t.Parallel()
+
+	// Everything after "--" stays positional, re-emitted after a "--" marker so
+	// the flag parser does not treat "-response.hex" as a flag.
+	got := reorder([]string{"--", "-response.hex"}, viewValueFlags)
+	if len(got) != 2 || got[0] != "--" || got[1] != "-response.hex" {
+		t.Fatalf("reorder(-- -response.hex) = %#v", got)
+	}
+
+	// A positional before flags is moved behind a "--" so it is never reparsed.
+	got = reorder([]string{"msg", "--filter", "39"}, viewValueFlags)
+	want := []string{"--filter", "39", "--", "msg"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("reorder = %#v, want %#v", got, want)
+	}
+
+	// No positionals: no trailing "--" is added.
+	got = reorder([]string{"--format", "json"}, viewValueFlags)
+	if strings.Join(got, " ") != "--format json" {
+		t.Fatalf("reorder(no positional) = %#v", got)
+	}
+}
+
+//nolint:paralleltest // uses t.Chdir, which forbids t.Parallel()
+func TestEndOfOptionsDashFilename(t *testing.T) {
+	_, hexData, _ := runApp("", "sample", "0110-auth-response", "--format", "hex")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "-response.hex"), []byte(hexData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	code, out, errOut := runApp("", "view", "--", "-response.hex")
+	if code != 0 {
+		t.Fatalf("view -- -response.hex failed: code=%d err=%q", code, errOut)
+	}
+	if strings.Contains(errOut, "flag provided but not defined") {
+		t.Fatalf("dash-leading filename was parsed as a flag: %q", errOut)
+	}
+	if !strings.Contains(out, "MTI") {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestRootHelpVersionRejectExtraArgs(t *testing.T) {
+	t.Parallel()
+
+	// Root --help / --version must not silently ignore trailing arguments.
+	if code, _, errOut := runApp("", "--help", "view"); code != 1 || !strings.Contains(errOut, "takes no arguments") {
+		t.Fatalf("--help view: code=%d err=%q", code, errOut)
+	}
+	if code, _, errOut := runApp("", "--version", "view"); code != 1 || !strings.Contains(errOut, "takes no arguments") {
+		t.Fatalf("--version view: code=%d err=%q", code, errOut)
+	}
+	if code, _, _ := runApp("", "-h", "extra"); code != 1 {
+		t.Fatal("-h extra should fail")
+	}
+
+	// Plain forms and the help subcommand keep working.
+	if code, _, _ := runApp("", "--help"); code != 0 {
+		t.Fatal("--help should succeed")
+	}
+	if code, out, _ := runApp("", "--version"); code != 0 || !strings.Contains(out, "iso8583tool") {
+		t.Fatal("--version should print the version")
+	}
+	if code, _, errOut := runApp("", "help", "view"); code != 0 || !strings.Contains(errOut, "Usage: iso8583tool view") {
+		t.Fatalf("help view should still describe view: code=%d err=%q", code, errOut)
+	}
+}
+
+func TestInvalidColorValue(t *testing.T) {
+	t.Parallel()
+
+	for _, cmd := range []string{"view", "validate"} {
+		code, _, errOut := runApp("", cmd, example("0110-auth-response.hex"), "--color", "banana")
+		if code != 1 || !strings.Contains(errOut, "invalid --color") {
+			t.Fatalf("%s --color banana: code=%d err=%q", cmd, code, errOut)
+		}
+	}
+}
+
 func TestConvertInvalidDocuments(t *testing.T) {
 	t.Parallel()
 
