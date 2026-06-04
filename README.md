@@ -75,6 +75,17 @@ iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 55.8
 cat examples/basei/0110-auth-response.hex | iso8583tool view -
 ```
 
+```text
+$ iso8583tool view examples/basei/0110-auth-response.hex
+Summary: 0110 · Approved · JPY 5000 · STAN 123456 · TERMID01
+...
+F2   Primary Account Number...: 4111****1111
+F39  Response Code............: 00  → Approved
+F49  Transaction Currency Code: 392  → JPY (Japanese yen)
+55.8A Authorisation Response Code: 3030  → Approved
+...
+```
+
 JSON output works with `jq`:
 
 ```shell
@@ -94,6 +105,18 @@ iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-r
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --format json | jq '.changes[].path'
 ```
 
+```text
+$ iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
+MTI changed
+- 0100
++ 0110
+
+Field 12 changed
+- 123456
++ 123457
+...
+```
+
 ## `redact`
 
 Masks the PAN, track data, PIN, and sensitive EMV tags. Output is a sanitized
@@ -107,6 +130,23 @@ iso8583tool redact examples/basei/0100-auth-request.hex --format text
 cat examples/basei/0100-auth-request.hex | iso8583tool redact -
 ```
 
+```text
+$ iso8583tool redact examples/basei/0100-auth-request.hex
+{
+  "mti": "0100",
+  "fields": {
+    ...
+    "2": "411111******1111",
+    "35": "411111****************************",
+    ...
+  },
+  "binary_fields": {
+    ...
+    "55.9F26": "****************"
+  }
+}
+```
+
 ## `convert`
 
 Converts between a packed message and a JSON document. The direction is detected
@@ -117,6 +157,22 @@ iso8583tool convert examples/basei/0100-auth-request.json
 iso8583tool convert examples/basei/0100-auth-request.hex
 iso8583tool sample 0100-auth-request --format hex | iso8583tool convert
 iso8583tool convert examples/basei/0100-auth-request.json --output out.hex
+```
+
+```text
+$ iso8583tool convert examples/basei/0100-auth-request.hex
+{
+  "mti": "0100",
+  "fields": {
+    ...
+    "2": "4111111111111111",
+    ...
+  },
+  "binary_fields": {
+    "55.9F02": "000000005000",
+    ...
+  }
+}
 ```
 
 Unknown Field 55 tags are preserved when converting.
@@ -132,6 +188,16 @@ iso8583tool validate --raw 01007220
 iso8583tool validate examples/basei/0110-auth-response.hex --format json
 ```
 
+```text
+$ iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
+Validation: ok
+Spec: basei-starter
+MTI: 0100  → Authorization Request from Acquirer (ISO8583:1987)
+...
+Issues:
+- [warning] 55.DF8129: unknown TLV tag preserved for round-trip safety
+```
+
 ## `sample`
 
 Lists and exports the built-in BASE I fixtures.
@@ -140,6 +206,14 @@ Lists and exports the built-in BASE I fixtures.
 iso8583tool sample
 iso8583tool sample 0100-auth-request
 iso8583tool sample 0100-auth-request --format hex --output 0100.hex
+```
+
+```text
+$ iso8583tool sample
+Available samples:
+- 0100-auth-request: EMV authorization request with BASE I style private fields 48 and 62
+- 0110-auth-response: EMV authorization response with issuer data in field 55 and opaque field 63
+...
 ```
 
 ## Message document
