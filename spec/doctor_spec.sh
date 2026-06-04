@@ -23,6 +23,16 @@ Describe 'iso8583tool doctor'
     remove_workdir
   End
 
+  It 'auto-detects a raw .bin without --encoding'
+    make_workdir
+    write_kanmu_like_message "$WORK/message.bin"
+    When run iso8583tool doctor "$WORK/message.bin"
+    The status should be success
+    The output should include '(raw input)'
+    The output should include "Recommended: --spec $PACKED_BCD_SPEC"
+    remove_workdir
+  End
+
   It 'emits a JSON report with --format json'
     When run iso8583tool doctor "$EXAMPLES/0110-auth-response.hex" --format json
     The status should be success

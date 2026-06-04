@@ -259,11 +259,13 @@ ISO 8583 does not pin a wire encoding: the same bitmap can be ASCII, packed BCD,
 or binary, and private fields differ per network. So a capture only decodes under
 the spec it was produced with. `doctor` takes that guesswork out: it tries every
 built-in preset and recommends the best fit, ranked by an exact byte-length round
-trip, a clean unpack, a valid MTI, and the number of decoded fields.
+trip, a clean unpack, a valid MTI, and the number of decoded fields. The input
+encoding is auto-detected (hex text vs raw bytes), so a raw `.bin` capture works
+without flags; override with `--encoding hex|raw` if the guess is wrong.
 
 ```shell
 iso8583tool doctor examples/basei/0110-auth-response.hex
-iso8583tool doctor message.bin --encoding raw
+iso8583tool doctor message.bin
 iso8583tool doctor examples/basei/0110-auth-response.hex --format json | jq .recommended
 ```
 

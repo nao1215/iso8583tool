@@ -624,14 +624,15 @@ func (a *App) runValidate(args []string) int {
 func (a *App) runDoctor(args []string) int {
 	flagSet := newFlagSet("doctor", a.stderr)
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
-	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Detect which built-in spec preset fits a message.")
-		writeLine(a.stderr, "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
+		writeLine(a.stderr, "The input encoding is auto-detected (hex text vs raw bytes); override with --encoding.")
 		writeLine(a.stderr, "Tries every preset and recommends the best fit; confirm the result with view.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
@@ -650,13 +651,14 @@ func (a *App) runDoctor(args []string) int {
 		return 1
 	}
 
-	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	input, usedEncoding, err := a.readDoctorInput(target, *raw, *encoding)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
 	}
 
 	diag := service.DiagnoseSpec(input)
+	diag.InputEncoding = usedEncoding
 	switch *format {
 	case "text":
 		a.printSpecDiagnosis(diag, target, a.palette(mode, *format))
@@ -680,12 +682,41 @@ func (a *App) runDoctor(args []string) int {
 	return 0
 }
 
+// readDoctorInput reads the message bytes for doctor, auto-detecting the input
+// encoding when --encoding is "auto" (the default). Auto-detection is what makes
+// doctor usable on an unknown capture: a raw *.bin file no longer has to be
+// hinted with --encoding raw. An explicit hex/raw is honored as-is.
+func (a *App) readDoctorInput(target, raw, encoding string) ([]byte, string, error) {
+	enc := strings.ToLower(strings.TrimSpace(encoding))
+	if enc != "auto" {
+		input, err := messageio.ReadMessage(target, raw, encoding, a.inputStdin(target, raw))
+		return input, enc, err
+	}
+
+	source, err := messageio.ReadSource(target, raw, a.inputStdin(target, raw))
+	if err != nil {
+		return nil, "", err
+	}
+	if messageio.LooksLikeHex(source) {
+		// A hex false positive (valid hex chars that are not actually a hex
+		// message) falls back to raw rather than erroring.
+		if decoded, derr := messageio.DecodeInput(source, "hex"); derr == nil {
+			return decoded, "hex", nil
+		}
+	}
+	return source, "raw", nil
+}
+
 func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal render.Palette) {
 	unit := "bytes"
 	if diag.Bytes == 1 {
 		unit = "byte"
 	}
-	writef(a.stdout, "%s inspected %d %s\n", pal.Dim("Doctor:"), diag.Bytes, unit)
+	encNote := ""
+	if diag.InputEncoding != "" {
+		encNote = fmt.Sprintf(" (%s input)", diag.InputEncoding)
+	}
+	writef(a.stdout, "%s inspected %d %s%s\n", pal.Dim("Doctor:"), diag.Bytes, unit, encNote)
 	if diag.Recommended == "" {
 		writeLine(a.stdout, pal.Red("No built-in preset could unpack this message."))
 		writeLine(a.stdout, pal.Dim("It may use a custom layout; pass a moov-io/iso8583 JSON spec with --spec PATH."))
@@ -714,8 +745,12 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 		if strings.TrimSpace(hintTarget) == "" || hintTarget == "-" {
 			hintTarget = "MESSAGE"
 		}
-		writef(a.stdout, "\n%s iso8583tool view %s --spec %s\n",
-			pal.Dim("Confirm with:"), hintTarget, diag.Recommended)
+		encFlag := ""
+		if diag.InputEncoding == "raw" {
+			encFlag = " --encoding raw"
+		}
+		writef(a.stdout, "\n%s iso8583tool view %s --spec %s%s\n",
+			pal.Dim("Confirm with:"), hintTarget, diag.Recommended, encFlag)
 	}
 }
 

@@ -72,6 +72,30 @@ func ReadMessage(target, inline, encoding string, stdin io.Reader) ([]byte, erro
 	return DecodeInput(data, encoding)
 }
 
+// LooksLikeHex reports whether data is plausibly a hex-encoded message: after
+// dropping ASCII whitespace it is non-empty, has an even number of digits, and
+// contains only hex digits. Raw binary messages carry control bytes (such as a
+// binary bitmap), so they fail this test — which makes it a reliable way to
+// auto-pick the input encoding when the caller does not know it.
+func LooksLikeHex(data []byte) bool {
+	n := 0
+	for _, b := range data {
+		switch b {
+		case ' ', '\t', '\n', '\r', '\v', '\f':
+			continue
+		}
+		if !isHexDigit(b) {
+			return false
+		}
+		n++
+	}
+	return n > 0 && n%2 == 0
+}
+
+func isHexDigit(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
+}
+
 func DecodeInput(data []byte, encoding string) ([]byte, error) {
 	switch strings.ToLower(strings.TrimSpace(encoding)) {
 	case "", "hex":
@@ -86,7 +110,7 @@ func DecodeInput(data []byte, encoding string) ([]byte, error) {
 		}
 		decoded, err := hex.DecodeString(clean)
 		if err != nil {
-			return nil, fmt.Errorf("decode hex input: %w", err)
+			return nil, fmt.Errorf("decode hex input: %w; if this is a raw binary message, pass --encoding raw", err)
 		}
 		return decoded, nil
 	case "raw":

@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -76,6 +78,36 @@ func TestDoctorDetectsPackedBCDFromRaw(t *testing.T) {
 	}
 	if !strings.Contains(out, "Recommended: --spec spec87bcd-starter") {
 		t.Errorf("doctor should recommend the BCD preset\n%s", out)
+	}
+}
+
+func TestDoctorAutoDetectsRawBinFile(t *testing.T) {
+	t.Parallel()
+
+	// A raw-binary *.bin capture must work without the user knowing to pass
+	// --encoding raw: doctor auto-detects the input encoding.
+	raw := []byte{
+		0x01, 0x00, 0x70, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x10, 0x40, 0x19, 0x24, 0x99, 0x99, 0x99, 0x99, 0x99, 0x32,
+		0x73, 0x27, 0x00, 0x00, 0x00, 0x00, 0x11, 0x38, 0x22, 0x04,
+	}
+	path := filepath.Join(t.TempDir(), "message.bin")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("write bin: %v", err)
+	}
+
+	code, out, errOut := runApp("", "doctor", path, "--no-color")
+	if code != 0 {
+		t.Fatalf("doctor on .bin failed: %d\nstdout=%s\nstderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"(raw input)",
+		"Recommended: --spec spec87bcd-starter",
+		"--encoding raw", // confirm hint must round-trip
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor .bin output missing %q\n%s", want, out)
+		}
 	}
 }
 
