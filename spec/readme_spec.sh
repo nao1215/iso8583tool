@@ -121,6 +121,34 @@ Describe 'README examples'
     End
   End
 
+  Describe 'doctor'
+    It 'recommends a preset for the BASE I sample'
+      When run iso8583tool doctor "$EXAMPLES/0110-auth-response.hex"
+      The status should be success
+      The output should include 'Recommended: --spec basei-starter'
+    End
+
+    It 'is jq-compatible for the recommendation'
+      When run sh -c '"$ISO_BIN" doctor "$EXAMPLES/0110-auth-response.hex" --format json | jq -r .recommended'
+      The status should be success
+      The output should equal 'basei-starter'
+    End
+  End
+
+  Describe 'specs'
+    It 'lists the presets'
+      When run iso8583tool specs
+      The status should be success
+      The output should include 'basei-starter (default)'
+    End
+
+    It 'is jq-compatible for preset names'
+      When run sh -c '"$ISO_BIN" specs --format json | jq -r ".[].name" | head -n1'
+      The status should be success
+      The output should equal 'basei-starter'
+    End
+  End
+
   Describe 'sample'
     It 'prints a sample as JSON'
       When run iso8583tool sample 0100-auth-request
@@ -145,19 +173,19 @@ Describe 'README examples'
 
   Describe 'other specs'
     It 'validates the spec87ascii sample'
-      When run iso8583tool validate "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --config "$PROJECT_ROOT/examples/spec87ascii.config.json"
+      When run iso8583tool validate "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87ascii
       The status should be success
       The output should include 'Spec: spec87ascii'
     End
 
     It 'views the spec87ascii sample'
-      When run iso8583tool view "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --config "$PROJECT_ROOT/examples/spec87ascii.config.json"
+      When run iso8583tool view "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87ascii
       The status should be success
       The output should include '0800'
     End
 
     It 'converts the spec87ascii sample to JSON'
-      When run iso8583tool convert "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --config "$PROJECT_ROOT/examples/spec87ascii.config.json"
+      When run iso8583tool convert "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87ascii
       The status should be success
       The output should include '"mti": "0800"'
     End

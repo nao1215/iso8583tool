@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -258,8 +259,11 @@ func TestHelpUsageStrings(t *testing.T) {
 	if strings.Contains(convertHelp, "packed BASE I message") {
 		t.Fatalf("convert help should not imply BASE I is the only spec:\n%s", convertHelp)
 	}
+	if !strings.Contains(convertHelp, "--spec") {
+		t.Fatalf("convert help should mention --spec for selecting the spec:\n%s", convertHelp)
+	}
 	if !strings.Contains(convertHelp, "--config") {
-		t.Fatalf("convert help should mention --config for selecting the spec:\n%s", convertHelp)
+		t.Fatalf("convert help should still mention --config:\n%s", convertHelp)
 	}
 }
 
@@ -318,6 +322,26 @@ func TestViewNetworkSampleShowsNMICMeaning(t *testing.T) {
 	}
 }
 
+func TestViewRawPackedBCDMessage(t *testing.T) {
+	t.Parallel()
+
+	raw := kanmuLikeRaw(t)
+	code, out, errOut := runApp(string(raw), "view", "-", "--encoding", "raw", "--spec", "spec87bcd-starter", "--color", "never")
+	if code != 0 {
+		t.Fatalf("view raw packed bcd: code=%d err=%q", code, errOut)
+	}
+	for _, want := range []string{
+		"401924******9999",
+		"327327",
+		"1138",
+		"2204",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("view raw packed bcd missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestFlagsAfterPositional(t *testing.T) {
 	t.Parallel()
 
@@ -355,6 +379,27 @@ func TestConvertRoundTripCLI(t *testing.T) {
 	}
 	if strings.TrimSpace(back) != strings.TrimSpace(hex) {
 		t.Fatalf("round-trip not stable:\n%q\nvs\n%q", back, hex)
+	}
+}
+
+func TestConvertRoundTripRawPackedBCDCLI(t *testing.T) {
+	t.Parallel()
+
+	raw := kanmuLikeRaw(t)
+	code, jsonDoc, errOut := runApp(string(raw), "convert", "-", "--encoding", "raw", "--spec", "spec87bcd-starter")
+	if code != 0 {
+		t.Fatalf("convert raw->json: code=%d err=%q", code, errOut)
+	}
+	if !strings.Contains(jsonDoc, `"mti": "0100"`) || !strings.Contains(jsonDoc, `"4": "000000001138"`) {
+		t.Fatalf("convert raw->json missing fields:\n%s", jsonDoc)
+	}
+
+	code, back, errOut := runApp(jsonDoc, "convert", "-", "--to", "hex", "--encoding", "raw", "--spec", "spec87bcd-starter")
+	if code != 0 {
+		t.Fatalf("convert json->raw: code=%d err=%q", code, errOut)
+	}
+	if back != string(raw) {
+		t.Fatalf("raw round-trip not stable:\n%x\nvs\n%x", []byte(back), raw)
 	}
 }
 
@@ -424,6 +469,25 @@ func TestConfigOverride(t *testing.T) {
 	_ = os.WriteFile(bad, []byte(`{"extensions":[{"id":1,"strategy":"nope"}]}`), 0o600)
 	if code, _, errOut := runApp("", "view", example("0110-auth-response.hex"), "--config", bad); code != 1 || !strings.Contains(errOut, "strategy") {
 		t.Fatalf("bad config should fail: code=%d err=%q", code, errOut)
+	}
+}
+
+func TestSpecFlagOverridesConfigSpec(t *testing.T) {
+	t.Parallel()
+
+	cfg := filepath.Join(t.TempDir(), "cfg.json")
+	body := `{"spec":"basei-starter"}`
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := kanmuLikeRaw(t)
+	code, out, errOut := runApp(string(raw), "view", "-", "--encoding", "raw", "--config", cfg, "--spec", "spec87bcd-starter", "--color", "never")
+	if code != 0 {
+		t.Fatalf("spec override should win: code=%d err=%q", code, errOut)
+	}
+	if !strings.Contains(out, "401924******9999") {
+		t.Fatalf("spec override output unexpected:\n%s", out)
 	}
 }
 
@@ -641,7 +705,7 @@ func TestValidateStrictFlag(t *testing.T) {
 func TestOverlayConfigRelabelsPrivateFields(t *testing.T) {
 	t.Parallel()
 
-	overlay := filepath.Join(examplesDir, "..", "basei-overlay.config.json")
+	overlay := filepath.Join(examplesDir, "..", "basei-overlay-config.json")
 	// 0110-auth-response carries private fields 48 and 63, so the overlay's
 	// custom names and strategies must surface in the describe view.
 	code, out, _ := runApp("", "view", example("0110-auth-response.hex"),
@@ -741,4 +805,14 @@ func TestConvertInvalidDocuments(t *testing.T) {
 	if code, _, errOut := runApp(`{"fields":{}}`, "convert", "-", "--to", "hex"); code != 1 || !strings.Contains(errOut, "mti") {
 		t.Fatalf("missing mti should fail: code=%d err=%q", code, errOut)
 	}
+}
+
+func kanmuLikeRaw(t *testing.T) []byte {
+	t.Helper()
+
+	raw, err := hex.DecodeString("010070040000000000001040192499999999993273270000000011382204")
+	if err != nil {
+		t.Fatalf("decode kanmu-like raw: %v", err)
+	}
+	return raw
 }

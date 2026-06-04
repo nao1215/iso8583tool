@@ -61,6 +61,21 @@ Describe 'iso8583tool convert'
     End
   End
 
+  Describe 'raw binary + packed BCD'
+    BeforeEach 'make_workdir; write_kanmu_like_message "$WORK/message.bin"'
+    AfterEach 'remove_workdir'
+
+    It 'is stable through raw -> json -> raw with the packed-BCD starter preset'
+      When run sh -c '
+        "$ISO_BIN" convert "$1" --encoding raw --spec "$2" > "$3/doc.json" &&
+        "$ISO_BIN" convert "$3/doc.json" --to hex --encoding raw --spec "$2" --output "$3/back.bin" >/dev/null &&
+        cmp -s "$1" "$3/back.bin" &&
+        echo SAME' sh "$WORK/message.bin" "$PACKED_BCD_SPEC" "$WORK"
+      The status should be success
+      The output should equal 'SAME'
+    End
+  End
+
   Describe 'to a file'
     BeforeEach 'make_workdir'
     AfterEach 'remove_workdir'

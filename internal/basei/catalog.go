@@ -1,6 +1,10 @@
 package basei
 
-const StarterPreset = "basei-starter"
+const (
+	StarterPreset          = "basei-starter"
+	Spec87ASCIIPreset      = "spec87ascii"
+	Spec87BCDStarterPreset = "spec87bcd-starter"
+)
 
 type ExtensionStrategy string
 

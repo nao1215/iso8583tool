@@ -13,6 +13,7 @@ import (
 
 var starterMessageSpec = buildStarterMessageSpec()
 var spec87ASCIIWithSecondaryFields = buildSpec87ASCIIWithSecondaryFields()
+var spec87BCDStarter = buildSpec87BCDStarter()
 
 func StarterMessageSpec() *iso8583.MessageSpec {
 	return starterMessageSpec
@@ -20,6 +21,10 @@ func StarterMessageSpec() *iso8583.MessageSpec {
 
 func Spec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
 	return spec87ASCIIWithSecondaryFields
+}
+
+func Spec87BCDStarter() *iso8583.MessageSpec {
+	return spec87BCDStarter
 }
 
 func buildStarterMessageSpec() *iso8583.MessageSpec {
@@ -44,6 +49,55 @@ func buildSpec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
 	return &iso8583.MessageSpec{
 		Name:   "ISO 8583:1987 ASCII",
 		Fields: fields,
+	}
+}
+
+func buildSpec87BCDStarter() *iso8583.MessageSpec {
+	fields := maps.Clone(spec87ASCIIWithSecondaryFields.Fields)
+
+	fields[0] = cloneWithEncoding(fields[0], encoding.BCD, prefix.BCD.Fixed)
+	fields[1] = field.NewBitmap(&field.Spec{
+		Length:      8,
+		Description: "Bitmap",
+		Enc:         encoding.Binary,
+		Pref:        prefix.Binary.Fixed,
+	})
+	fields[2] = cloneWithEncoding(fields[2], encoding.BCD, prefix.Binary.L)
+
+	for _, id := range []int{
+		3, 4, 5, 6, 7, 8, 9, 10,
+		11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+		21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+		31, 49, 50, 51, 53, 70,
+	} {
+		fields[id] = cloneWithEncoding(fields[id], encoding.BCD, prefix.BCD.Fixed)
+	}
+
+	return &iso8583.MessageSpec{
+		Name:   "ISO 8583:1987 Packed BCD Starter",
+		Fields: fields,
+	}
+}
+
+func cloneWithEncoding(src field.Field, enc encoding.Encoder, pref prefix.Prefixer) field.Field {
+	spec := src.Spec()
+	if spec == nil {
+		return src
+	}
+	cloned := &field.Spec{
+		Length:      spec.Length,
+		Description: spec.Description,
+		Enc:         enc,
+		Pref:        pref,
+		Pad:         spec.Pad,
+	}
+	switch src.(type) {
+	case *field.Numeric:
+		return field.NewNumeric(cloned)
+	case *field.String:
+		return field.NewString(cloned)
+	default:
+		return src
 	}
 }
 

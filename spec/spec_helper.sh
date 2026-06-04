@@ -20,6 +20,9 @@ export ISO_BIN
 EXAMPLES="$PROJECT_ROOT/examples/basei"
 export EXAMPLES
 
+PACKED_BCD_SPEC="spec87bcd-starter"
+export PACKED_BCD_SPEC
+
 # iso8583tool runs the built binary.
 iso8583tool() {
   "$ISO_BIN" "$@"
@@ -28,6 +31,13 @@ iso8583tool() {
 # sample_hex prints a packed sample message as hex.
 sample_hex() {
   "$ISO_BIN" sample 0110-auth-response --format hex
+}
+
+# write_kanmu_like_message writes a raw-binary ISO8583 message that uses a
+# packed-BCD MTI, a binary bitmap, a one-byte PAN length, and packed-BCD
+# numeric fields. It mirrors the layout used in kanmu/gocon-2022-spring.
+write_kanmu_like_message() {
+  printf '\001\000\160\004\000\000\000\000\000\000\020\100\031\044\231\231\231\231\231\062\163\047\000\000\000\000\021\070\042\004' > "$1"
 }
 
 make_workdir() {
