@@ -105,17 +105,55 @@ func maskUnknownInDocument(doc *messageio.Document, tags []UnknownTag) []string 
 	return masked
 }
 
-// maskUnknownInText replaces the raw hex of each unknown TLV tag in moov's
-// Describe output with a length-preserving mask, so the text view does not leak
-// bytes the document and unknown-tag list already mask.
+// maskUnknownInText masks the value of each unknown TLV tag in moov's Describe
+// output. It works line by line and only touches lines that moov marks as
+// "Unknown TLV tag", so a known tag is never masked just because it happens to
+// share the same bytes as an unknown one.
 func maskUnknownInText(body string, tags []UnknownTag) string {
-	for _, t := range tags {
-		if t.Raw == "" {
+	if len(tags) == 0 {
+		return body
+	}
+	const marker = "Unknown TLV tag"
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if !strings.Contains(line, marker) {
 			continue
 		}
-		body = strings.ReplaceAll(body, t.Raw, maskAll(t.Raw))
+		idx := strings.LastIndex(line, ": ")
+		if idx < 0 {
+			continue
+		}
+		prefix, value := line[:idx+2], line[idx+2:]
+		lines[i] = prefix + maskAll(value)
 	}
-	return body
+	return strings.Join(lines, "\n")
+}
+
+// maskValueForDiff returns the display form of a field value for diff output.
+// It applies the same masking view uses so diff is as safe to share as view:
+// the PAN keeps BIN + last four, track data keeps its BIN, and PIN, cardholder
+// EMV tags, and unknown TLV tags are fully masked. unknownPaths lists the
+// Field 55 tags the active spec does not define.
+func maskValueForDiff(path, value string, unknownPaths map[string]bool) string {
+	switch path {
+	case "2", "20": // primary / secondary account number
+		return maskPAN(value)
+	case "35", "36", "45": // track 2 / track 3 / track 1
+		return maskTrack(value)
+	case "52": // PIN data
+		return maskAll(value)
+	}
+	if unknownPaths[path] {
+		return maskAll(value)
+	}
+	if tag, ok := strings.CutPrefix(path, "55."); ok {
+		for _, sensitive := range cardholderEMVTags {
+			if sensitive == tag {
+				return maskAll(value)
+			}
+		}
+	}
+	return value
 }
 
 // maskPAN keeps the 6-digit BIN and the last 4 digits and masks the rest.

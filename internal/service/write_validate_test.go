@@ -25,7 +25,7 @@ func TestWriteValidateAndView(t *testing.T) {
 		t.Fatalf("WriteMessage returned error: %v", err)
 	}
 
-	report := ValidateMessage(writeResult.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog())
+	report := ValidateMessage(writeResult.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
 	if report.HasErrors() {
 		t.Fatalf("ValidateMessage returned errors: %#v", report.Issues)
 	}
@@ -66,7 +66,7 @@ func TestValidateOpaqueIsNotAnIssue(t *testing.T) {
 		t.Fatalf("WriteMessage returned error: %v", err)
 	}
 
-	report := ValidateMessage(packed.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog())
+	report := ValidateMessage(packed.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
 	if report.HasErrors() {
 		t.Fatalf("unexpected errors: %#v", report.Issues)
 	}
@@ -110,7 +110,7 @@ func TestCraftedInputDoesNotPanic(t *testing.T) {
 
 	for i, raw := range crafted {
 		// ValidateMessage must absorb the failure into a report, not panic.
-		report := ValidateMessage(raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog())
+		report := ValidateMessage(raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
 		if report.Valid {
 			t.Fatalf("crafted input %d unexpectedly validated as good", i)
 		}

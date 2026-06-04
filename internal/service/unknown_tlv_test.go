@@ -47,7 +47,7 @@ func TestUnknownTLVRoundTrip(t *testing.T) {
 	}
 
 	// validate must surface the unknown tag as a warning, not an error.
-	report := ValidateMessage(writeResult.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog())
+	report := ValidateMessage(writeResult.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
 	if report.HasErrors() {
 		t.Fatalf("ValidateMessage returned errors: %#v", report.Issues)
 	}

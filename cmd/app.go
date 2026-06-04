@@ -227,12 +227,14 @@ func (a *App) runDiff(args []string) int {
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	unsafe := flagSet.Bool("unsafe", false, "show raw PAN, track, and unknown TLV values (default: masked like view)")
 	var filters multiFlag
 	flagSet.Var(&filters, "filter", "only compare this field path (repeatable)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Compare two ISO8583 messages field by field.")
-		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--unsafe] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Either BEFORE or AFTER may be '-' to read that side from stdin.")
+		writeLine(a.stderr, "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
 	if code, ok := parseArgs(flagSet, reorder(args, diffValueFlags)); !ok {
@@ -245,6 +247,10 @@ func (a *App) runDiff(args []string) int {
 	beforeArg, afterArg := flagSet.Arg(0), flagSet.Arg(1)
 	if beforeArg == "-" && afterArg == "-" {
 		writeLine(a.stderr, "only one of BEFORE or AFTER can be stdin")
+		return 1
+	}
+	if *format != "text" && *format != "json" {
+		writef(a.stderr, "unsupported format %q\n", *format)
 		return 1
 	}
 
@@ -271,7 +277,7 @@ func (a *App) runDiff(args []string) int {
 		return 1
 	}
 
-	result, err := service.DiffMessages(ctx.spec.MessageSpec, before, after, filters)
+	result, err := service.DiffMessages(ctx.spec.MessageSpec, before, after, filters, *unsafe)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -544,10 +550,12 @@ func (a *App) runValidate(args []string) int {
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--strict] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(a.stderr, flagSet)
 	}
 	if code, ok := parseArgs(flagSet, reorder(args, validateValueFlags)); !ok {
@@ -577,7 +585,7 @@ func (a *App) runValidate(args []string) int {
 		return 1
 	}
 
-	report := service.ValidateMessage(input, ctx.spec.MessageSpec, ctx.specLabel, ctx.catalog)
+	report := service.ValidateMessage(input, ctx.spec.MessageSpec, ctx.specLabel, ctx.catalog, *strict)
 	switch *format {
 	case "text":
 		a.printValidationReport(report, a.palette(mode, *format))

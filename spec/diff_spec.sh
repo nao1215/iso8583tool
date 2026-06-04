@@ -60,4 +60,22 @@ Describe 'iso8583tool diff'
     The status should be failure
     The stderr should include 'stdin'
   End
+
+  It 'masks track data by default'
+    When run iso8583tool diff "$EXAMPLES/0100-auth-request.hex" "$EXAMPLES/0110-auth-response.hex" --color never
+    The status should be success
+    The output should not include '4111111111111111D'
+  End
+
+  It 'reveals raw values with --unsafe'
+    When run iso8583tool diff "$EXAMPLES/0100-auth-request.hex" "$EXAMPLES/0110-auth-response.hex" --color never --unsafe
+    The status should be success
+    The output should include '4111111111111111D'
+  End
+
+  It 'rejects an unknown --format value'
+    When run iso8583tool diff "$EXAMPLES/0100-auth-request.hex" "$EXAMPLES/0110-auth-response.hex" --format bogus
+    The status should be failure
+    The stderr should include 'unsupported format'
+  End
 End

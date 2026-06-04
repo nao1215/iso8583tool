@@ -40,7 +40,7 @@ func TestDiffMessagesChangedAddedRemoved(t *testing.T) {
 		t.Fatalf("pack after: %v", err)
 	}
 
-	result, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, nil)
+	result, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, nil, false)
 	if err != nil {
 		t.Fatalf("DiffMessages: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestDiffMessagesIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pack: %v", err)
 	}
-	result, err := DiffMessages(spec.MessageSpec, raw.Raw, raw.Raw, nil)
+	result, err := DiffMessages(spec.MessageSpec, raw.Raw, raw.Raw, nil, false)
 	if err != nil {
 		t.Fatalf("DiffMessages: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestDiffDeterministicOrderAndFilter(t *testing.T) {
 	afterRaw, _ := WriteMessage(after, spec.MessageSpec)
 
 	// Unfiltered ordering is deterministic and path-sorted (4 before 55.*).
-	all, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, nil)
+	all, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, nil, false)
 	if err != nil {
 		t.Fatalf("DiffMessages: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestDiffDeterministicOrderAndFilter(t *testing.T) {
 	}
 
 	// --filter 55 keeps only the EMV subtag changes.
-	filtered, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"55"})
+	filtered, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"55"}, false)
 	if err != nil {
 		t.Fatalf("DiffMessages filtered: %v", err)
 	}

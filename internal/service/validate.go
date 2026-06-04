@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/moov-io/iso8583"
 
@@ -43,7 +45,11 @@ func (r ValidationReport) HasErrors() bool {
 	return false
 }
 
-func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, catalog basei.ExtensionCatalog) ValidationReport {
+// ValidateMessage checks that a message unpacks and reports unknown TLV tags.
+// When strict is set it additionally applies best-effort, message-class-aware
+// BASE I semantic checks (required and recommended fields per MTI class). Strict
+// mode is a heuristic aid, not a substitute for full network certification.
+func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, catalog basei.ExtensionCatalog, strict bool) ValidationReport {
 	report := ValidationReport{
 		Spec: specLabel,
 	}
@@ -111,8 +117,113 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 		})
 	}
 
+	if strict {
+		report.Issues = append(report.Issues, strictSemanticIssues(msg, report.MTI)...)
+	}
+
 	report.Valid = !report.HasErrors()
 	return report
+}
+
+// strictSemanticIssues applies message-class-aware BASE I checks. It is a
+// best-effort heuristic: it covers the common required/recommended fields for
+// authorization, financial, reversal, and network-management messages, keyed by
+// the MTI message class and function. It does not model every conditional rule
+// or partner-specific overlay.
+func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
+	var issues []ValidationIssue
+	add := func(severity, path, message string) {
+		issues = append(issues, ValidationIssue{Severity: severity, Path: path, Message: message})
+	}
+
+	if len(mti) != 4 {
+		add("error", "0", "strict: MTI must be 4 digits to classify the message")
+		return issues
+	}
+	for _, r := range mti {
+		if r < '0' || r > '9' {
+			add("error", "0", "strict: MTI must be numeric")
+			return issues
+		}
+	}
+
+	fields := msg.GetFields()
+	has := func(id int) bool { _, ok := fields[id]; return ok }
+	hasAny := func(ids ...int) bool {
+		for _, id := range ids {
+			if has(id) {
+				return true
+			}
+		}
+		return false
+	}
+	require := func(id int, context string) {
+		if !has(id) {
+			add("error", strconv.Itoa(id), "strict: required for "+context)
+		}
+	}
+	recommend := func(id int, context string) {
+		if !has(id) {
+			add("warning", strconv.Itoa(id), "strict: recommended for "+context)
+		}
+	}
+
+	class, function := mti[1], mti[2]
+	isRequest := function == '0'
+	isResponse := function == '1' || function == '3'
+	isAdvice := function == '2'
+
+	// The system trace audit number (field 11) ties a message to its pair.
+	require(11, "every BASE I message")
+
+	switch class {
+	case '1', '2': // authorization / financial
+		switch {
+		case isRequest:
+			require(3, "an authorization/financial request (processing code)")
+			require(4, "an authorization/financial request (amount)")
+			require(7, "an authorization/financial request (transmission date/time)")
+			if !hasAny(2, 35, 45) {
+				add("error", "2", "strict: an authorization/financial request needs a PAN source (field 2, 35, or 45)")
+			}
+			recommend(37, "card messages (retrieval reference number)")
+		case isResponse:
+			require(39, "an authorization/financial response (response code)")
+			if rc, err := msg.GetString(39); err == nil && isApprovalCode(rc) && !has(38) {
+				add("warning", "38", "strict: an approved response (field 39="+strings.TrimSpace(rc)+") usually carries an authorization identification (field 38)")
+			}
+			recommend(37, "card messages (retrieval reference number)")
+		}
+	case '4': // reversal
+		switch {
+		case isRequest || isAdvice:
+			require(4, "a reversal (amount)")
+			require(7, "a reversal (transmission date/time)")
+			require(90, "a reversal (original data elements)")
+		case isResponse:
+			require(39, "a reversal response (response code)")
+		}
+	case '8': // network management
+		switch {
+		case isRequest:
+			require(70, "a network-management request (network management code)")
+		case isResponse:
+			require(39, "a network-management response (response code)")
+		}
+	}
+
+	return issues
+}
+
+// isApprovalCode reports whether a BASE I response code (field 39) is an
+// approval, for which an authorization identification (field 38) is expected.
+func isApprovalCode(rc string) bool {
+	switch strings.TrimSpace(rc) {
+	case "00", "000", "0000", "10", "11":
+		return true
+	default:
+		return false
+	}
 }
 
 func extensionNote(ext basei.ExtensionField) string {

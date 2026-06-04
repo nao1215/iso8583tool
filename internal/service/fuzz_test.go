@@ -58,6 +58,6 @@ func FuzzDiffMessages(f *testing.F) {
 	}
 
 	f.Fuzz(func(_ *testing.T, before, after []byte) {
-		_, _ = DiffMessages(spec, before, after, nil)
+		_, _ = DiffMessages(spec, before, after, nil, false)
 	})
 }

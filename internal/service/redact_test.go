@@ -108,7 +108,7 @@ func TestUnknownTagNeverLeaksSensitiveBytes(t *testing.T) {
 	}
 
 	// validate must mask the unknown tag in its report.
-	report := ValidateMessage(raw.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog())
+	report := ValidateMessage(raw.Raw, spec.MessageSpec, spec.Label, basei.DefaultExtensionCatalog(), false)
 	for _, ut := range report.UnknownTags {
 		if strings.Trim(ut.Raw, "*") != "" {
 			t.Fatalf("validate leaked unknown tag %q", ut.Raw)

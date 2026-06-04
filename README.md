@@ -95,7 +95,10 @@ iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fiel
 ## `diff`
 
 Compares two messages by field path, including nested EMV tags. Either side may
-be `-` for stdin.
+be `-` for stdin. Differences are detected on the real values, but the displayed
+values are masked just like `view` (PAN to BIN + last four, track and unknown
+TLV bytes hidden), so diff output is safe to paste into a ticket. Pass
+`--unsafe` to show raw cardholder data for local debugging.
 
 ![diff](./docs/demo-diff.gif)
 
@@ -103,6 +106,7 @@ be `-` for stdin.
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --filter 55
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --format json | jq '.changes[].path'
+iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex --unsafe
 ```
 
 ```text
@@ -179,13 +183,22 @@ Unknown Field 55 tags are preserved when converting.
 
 ## `validate`
 
-Reports whether a message unpacks, any unknown TLV tags, and the field path of
-an unpack failure. Exit code is `0` for success or warnings, `1` for errors.
+By default, `validate` reports whether a message **unpacks**, any unknown TLV
+tags, and the field path of an unpack failure. It does **not** assert that the
+message is a complete, business-valid BASE I transaction — a message with only a
+STAN can still unpack. Exit code is `0` for success or warnings, `1` for errors.
+
+Add `--strict` for best-effort, message-class-aware semantic checks: required
+and recommended fields per MTI (for example, a `0110` response must carry a
+response code in field 39, an approved response should carry field 38, a
+reversal needs field 90). Strict mode is a heuristic aid, not a substitute for
+full network certification.
 
 ```shell
 iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
 iso8583tool validate --raw 01007220
 iso8583tool validate examples/basei/0110-auth-response.hex --format json
+iso8583tool validate examples/basei/0110-auth-response.hex --strict
 ```
 
 ```text
@@ -271,7 +284,8 @@ iso8583tool view examples/spec87ascii/0800-network-echo.hex --config examples/sp
 ```
 
 A config selects the spec and, for BASE I-style sets, overrides the extension
-catalog:
+catalog. The `extensions` list **replaces** the built-in catalog, so list every
+private field you want annotated, not just the one you are changing:
 
 ```json
 {
@@ -284,6 +298,14 @@ catalog:
 
 `spec` is `basei-starter`, `spec87ascii`, or a path to a moov JSON spec relative
 to the config file. `strategy` is `opaque`, `tlv`, `positional`, or `bitmap`.
+
+A fuller worked overlay that relabels the private-field band (F48/F55/F62/F63/F127)
+for a fictional acquirer lives at
+[`examples/basei-overlay.config.json`](./examples/basei-overlay.config.json):
+
+```shell
+iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay.config.json
+```
 
 ## Fuzzing
 

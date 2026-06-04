@@ -450,6 +450,86 @@ func TestDiffCommand(t *testing.T) {
 	}
 }
 
+func TestDiffMasksSensitiveDataByDefault(t *testing.T) {
+	t.Parallel()
+
+	req := example("0100-auth-request.hex")   // carries track 2 in field 35
+	resp := example("0110-auth-response.hex") // has no field 35
+
+	// By default diff is as safe to share as view/redact: the removed track 2
+	// must not appear in full.
+	code, out, _ := runApp("", "diff", req, resp, "--color", "never")
+	if code != 0 {
+		t.Fatalf("diff: code=%d out=%q", code, out)
+	}
+	if strings.Contains(out, "4111111111111111D") {
+		t.Fatalf("diff leaked full track 2 by default:\n%s", out)
+	}
+
+	// --unsafe is an explicit opt-in to the raw values.
+	code, outU, _ := runApp("", "diff", req, resp, "--color", "never", "--unsafe")
+	if code != 0 {
+		t.Fatalf("diff --unsafe: code=%d", code)
+	}
+	if !strings.Contains(outU, "4111111111111111D") {
+		t.Fatalf("diff --unsafe should reveal the raw track 2:\n%s", outU)
+	}
+}
+
+func TestDiffRejectsUnknownFormat(t *testing.T) {
+	t.Parallel()
+
+	req := example("0100-auth-request.hex")
+	resp := example("0110-auth-response.hex")
+	code, _, errOut := runApp("", "diff", req, resp, "--format", "bogus")
+	if code != 1 || !strings.Contains(errOut, "unsupported format") {
+		t.Fatalf("diff bogus format: code=%d err=%q", code, errOut)
+	}
+}
+
+func TestValidateStrictFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "hollow.json")
+	if err := os.WriteFile(jsonPath, []byte(`{"mti":"0110","fields":{"11":"123456"}}`), 0o600); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+	hexPath := filepath.Join(dir, "hollow.hex")
+	if code, _, errOut := runApp("", "convert", jsonPath, "--to", "hex", "--output", hexPath); code != 0 {
+		t.Fatalf("convert: code=%d err=%q", code, errOut)
+	}
+
+	// Lenient validation only checks that the message unpacks.
+	if code, out, _ := runApp("", "validate", hexPath, "--color", "never"); code != 0 || !strings.Contains(out, "ok") {
+		t.Fatalf("lenient validate: code=%d out=%q", code, out)
+	}
+
+	// --strict flags the hollow response and exits non-zero.
+	code, out, _ := runApp("", "validate", hexPath, "--strict", "--color", "never")
+	if code != 1 || !strings.Contains(out, "failed") || !strings.Contains(out, "39") {
+		t.Fatalf("strict validate: code=%d out=%q", code, out)
+	}
+}
+
+func TestOverlayConfigRelabelsPrivateFields(t *testing.T) {
+	t.Parallel()
+
+	overlay := filepath.Join(examplesDir, "..", "basei-overlay.config.json")
+	// 0110-auth-response carries private fields 48 and 63, so the overlay's
+	// custom names and strategies must surface in the describe view.
+	code, out, _ := runApp("", "view", example("0110-auth-response.hex"),
+		"--config", overlay, "--color", "never")
+	if code != 0 {
+		t.Fatalf("view with overlay: code=%d out=%q", code, out)
+	}
+	for _, want := range []string{"Acme Settlement Trace", "Acme Loyalty Segment"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("overlay name %q missing from describe:\n%s", want, out)
+		}
+	}
+}
+
 func TestRedactCommand(t *testing.T) {
 	t.Parallel()
 

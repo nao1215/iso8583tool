@@ -1,0 +1,36 @@
+{
+  "spec": "basei-starter",
+  "extensions": [
+    {
+      "id": 48,
+      "name": "Acme Loyalty Segment",
+      "strategy": "positional",
+      "description": "Pipe-delimited overlay (LOYALTY=...|INSTALLMENT=...). Promote to 48.1, 48.2, ... once the segment layout is frozen."
+    },
+    {
+      "id": 55,
+      "name": "ICC System Related Data",
+      "strategy": "tlv",
+      "preserve_unknown_tlv_tags": true,
+      "description": "EMV BER-TLV. Edited per tag; unknown tags are preserved for round-trip safety."
+    },
+    {
+      "id": 62,
+      "name": "Acme Order Context",
+      "strategy": "positional",
+      "description": "Private order metadata (ORDERID=...|CHANNEL=...). Model as 62.1, 62.2 once the partner documents the layout."
+    },
+    {
+      "id": 63,
+      "name": "Acme Settlement Trace",
+      "strategy": "opaque",
+      "description": "Acquirer settlement trace blob. Keep opaque until the partner schema is stable across message classes."
+    },
+    {
+      "id": 127,
+      "name": "Switch Private (Nested Bitmap)",
+      "strategy": "bitmap",
+      "description": "Many switches nest a secondary bitmap / subelements here. Model separately from flat field parsing."
+    }
+  ]
+}

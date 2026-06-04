@@ -36,7 +36,12 @@ type DiffResult struct {
 // (including nested EMV tags such as 55.9F02). Values are the canonical,
 // padded representations, so the comparison is stable. filters, when set, keep
 // only paths equal to or nested under one of the given paths.
-func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []string) (DiffResult, error) {
+//
+// Differences are detected on the real field values, but unless unsafe is set
+// the displayed values are masked exactly as view masks them, so diff output is
+// safe to paste into a ticket or pipe to jq. unsafe restores the raw values for
+// local debugging.
+func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []string, unsafe bool) (DiffResult, error) {
 	beforeDoc, err := MessageToDocument(spec, before)
 	if err != nil {
 		return DiffResult{}, err
@@ -48,6 +53,12 @@ func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []str
 
 	beforeMap := FlattenDocument(beforeDoc)
 	afterMap := FlattenDocument(afterDoc)
+
+	mask := func(_, value string) string { return value }
+	if !unsafe {
+		unknownPaths := diffUnknownPaths(spec, before, after)
+		mask = func(path, value string) string { return maskValueForDiff(path, value, unknownPaths) }
+	}
 
 	paths := unionPaths(beforeMap, afterMap)
 	sortPaths(paths)
@@ -62,15 +73,31 @@ func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []str
 		switch {
 		case okB && okA:
 			if b != a {
-				result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffChanged, Before: b, After: a})
+				result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffChanged, Before: mask(path, b), After: mask(path, a)})
 			}
 		case okB:
-			result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffRemoved, Before: b})
+			result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffRemoved, Before: mask(path, b)})
 		case okA:
-			result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffAdded, After: a})
+			result.Changes = append(result.Changes, DiffEntry{Path: path, Kind: DiffAdded, After: mask(path, a)})
 		}
 	}
 	return result, nil
+}
+
+// diffUnknownPaths returns the set of Field 55 tag paths that neither message
+// maps to a known spec field, so diff can mask their bytes like view does.
+func diffUnknownPaths(spec *iso8583.MessageSpec, before, after []byte) map[string]bool {
+	unknown := map[string]bool{}
+	for _, raw := range [][]byte{before, after} {
+		msg := iso8583.NewMessage(spec)
+		if err := safeUnpack(msg, raw); err != nil {
+			continue
+		}
+		for _, t := range collectUnknownTags(msg) {
+			unknown[t.Path] = true
+		}
+	}
+	return unknown
 }
 
 // FlattenDocument collapses a message document into a single path->value map.

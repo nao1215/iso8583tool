@@ -35,4 +35,18 @@ Describe 'iso8583tool validate'
     The output should include '"valid": true'
     The output should include '"summary"'
   End
+
+  It 'accepts a complete sample under --strict'
+    When run iso8583tool validate "$EXAMPLES/0110-auth-response.hex" --strict
+    The status should be success
+    The output should include 'Validation: ok'
+  End
+
+  It 'flags a hollow response under --strict'
+    # A 0110 carrying only a STAN unpacks, but is not a well-formed response.
+    When run sh -c 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" validate - --strict'
+    The status should be failure
+    The output should include 'Validation: failed'
+    The output should include '39'
+  End
 End
