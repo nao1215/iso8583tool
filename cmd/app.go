@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 
 	"github.com/nao1215/iso8583tool/internal/basei"
@@ -82,6 +83,10 @@ func (a *App) Run(args []string) int {
 		return 0
 	case "view":
 		return a.runView(args[1:])
+	case "diff":
+		return a.runDiff(args[1:])
+	case "redact":
+		return a.runRedact(args[1:])
 	case "convert":
 		return a.runConvert(args[1:])
 	case "validate":
@@ -108,7 +113,7 @@ func (a *App) runHelp(args []string) int {
 	rest := args[1:]
 
 	switch name {
-	case "view", "convert", "validate", "sample":
+	case "view", "diff", "redact", "convert", "validate", "sample":
 		forwarded := make([]string, 0, len(args)+1)
 		forwarded = append(forwarded, args...)
 		forwarded = append(forwarded, "--help")
@@ -213,6 +218,206 @@ func (a *App) runView(args []string) int {
 		}
 	}
 	return 0
+}
+
+func (a *App) runDiff(args []string) int {
+	flagSet := newFlagSet("diff", a.stderr)
+	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	format := flagSet.String("format", "text", "output format: text or json")
+	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	var filters multiFlag
+	flagSet.Var(&filters, "filter", "only compare this field path (repeatable)")
+	flagSet.Usage = func() {
+		writeLine(a.stderr, "Compare two ISO8583 messages field by field.")
+		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Either BEFORE or AFTER may be '-' to read that side from stdin.")
+		printFlagDefaults(a.stderr, flagSet)
+	}
+	if code, ok := parseArgs(flagSet, reorder(args, diffValueFlags)); !ok {
+		return code
+	}
+	if flagSet.NArg() != 2 {
+		flagSet.Usage()
+		return 1
+	}
+	beforeArg, afterArg := flagSet.Arg(0), flagSet.Arg(1)
+	if beforeArg == "-" && afterArg == "-" {
+		writeLine(a.stderr, "only one of BEFORE or AFTER can be stdin")
+		return 1
+	}
+
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	ctx, err := a.loadContext(*configPath)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	before, err := messageio.ReadMessage(beforeArg, "", *encoding, a.sideStdin(beforeArg))
+	if err != nil {
+		writeLine(a.stderr, fmt.Errorf("before: %w", err))
+		return 1
+	}
+	after, err := messageio.ReadMessage(afterArg, "", *encoding, a.sideStdin(afterArg))
+	if err != nil {
+		writeLine(a.stderr, fmt.Errorf("after: %w", err))
+		return 1
+	}
+
+	result, err := service.DiffMessages(ctx.spec.MessageSpec, before, after, filters)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	if *format == "json" {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		writef(a.stdout, "%s\n", data)
+		return 0
+	}
+
+	a.printDiff(result, a.palette(mode, *format))
+	return 0
+}
+
+// sideStdin returns stdin only for the side explicitly given as "-".
+func (a *App) sideStdin(target string) io.Reader {
+	if target == "-" {
+		return a.stdin
+	}
+	return nil
+}
+
+func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
+	if len(result.Changes) == 0 {
+		writeLine(a.stdout, "No differences.")
+		return
+	}
+	for i, c := range result.Changes {
+		if i > 0 {
+			_, _ = io.WriteString(a.stdout, "\n")
+		}
+		label := "Field " + c.Path
+		if c.Path == "mti" {
+			label = "MTI"
+		}
+		writef(a.stdout, "%s %s\n", pal.Bold(label), string(c.Kind))
+		switch c.Kind {
+		case service.DiffChanged:
+			writef(a.stdout, "%s\n", pal.Red("- "+c.Before))
+			writef(a.stdout, "%s\n", pal.Green("+ "+c.After))
+		case service.DiffRemoved:
+			writef(a.stdout, "%s\n", pal.Red("- "+c.Before))
+		case service.DiffAdded:
+			writef(a.stdout, "%s\n", pal.Green("+ "+c.After))
+		}
+	}
+}
+
+func (a *App) runRedact(args []string) int {
+	flagSet := newFlagSet("redact", a.stderr)
+	configPath := flagSet.String("config", "", "path to a JSON config (spec + extension catalog)")
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
+	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	format := flagSet.String("format", "json", "output format: json or text")
+	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	flagSet.Usage = func() {
+		writeLine(a.stderr, "Mask cardholder data and secrets so a message can be shared safely.")
+		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--format json|text] [--config PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
+		printFlagDefaults(a.stderr, flagSet)
+	}
+	if code, ok := parseArgs(flagSet, reorder(args, redactValueFlags)); !ok {
+		return code
+	}
+	target := flagSet.Arg(0)
+	if flagSet.NArg() > 1 {
+		flagSet.Usage()
+		return 1
+	}
+
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	ctx, err := a.loadContext(*configPath)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	doc, paths, err := service.RedactMessage(ctx.spec.MessageSpec, input)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	switch *format {
+	case "json":
+		data, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		writef(a.stdout, "%s\n", data)
+	case "text":
+		a.printRedacted(doc, paths, a.palette(mode, *format))
+	default:
+		writef(a.stderr, "unsupported format %q\n", *format)
+		return 1
+	}
+	return 0
+}
+
+func (a *App) printRedacted(doc messageio.Document, paths []string, pal render.Palette) {
+	redactedSet := map[string]bool{}
+	for _, p := range paths {
+		redactedSet[p] = true
+	}
+	writef(a.stdout, "%s %s\n", pal.Dim("MTI:"), pal.Bold(doc.MTI))
+
+	keys := make([]string, 0, len(doc.Fields)+len(doc.BinaryFields))
+	for k := range doc.Fields {
+		keys = append(keys, k)
+	}
+	for k := range doc.BinaryFields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v, ok := doc.Fields[k]
+		if !ok {
+			v = doc.BinaryFields[k]
+		}
+		if redactedSet[k] {
+			writef(a.stdout, "%s = %s\n", pal.Green("F"+k), pal.Yellow(v))
+			continue
+		}
+		writef(a.stdout, "%s = %s\n", pal.Green("F"+k), v)
+	}
+	if len(paths) > 0 {
+		writef(a.stdout, "%s %s\n", pal.Dim("Redacted:"), strings.Join(paths, ", "))
+	}
 }
 
 func (a *App) runConvert(args []string) int {
@@ -557,6 +762,8 @@ func (a *App) printRootHelp() {
 	writeLine(a.stderr, "")
 	writeLine(a.stderr, "Commands:")
 	writeLine(a.stderr, "  view       Unpack and inspect a message")
+	writeLine(a.stderr, "  diff       Compare two messages field by field")
+	writeLine(a.stderr, "  redact     Mask sensitive fields for safe sharing")
 	writeLine(a.stderr, "  convert    Convert between a packed message and a JSON document")
 	writeLine(a.stderr, "  validate   Check a message against the configured spec")
 	writeLine(a.stderr, "  sample     List or export built-in BASE I starter samples")
@@ -648,6 +855,8 @@ var (
 	validateValueFlags = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true}
 	convertValueFlags  = map[string]bool{"config": true, "output": true, "encoding": true, "to": true}
 	sampleValueFlags   = map[string]bool{"format": true, "output": true}
+	diffValueFlags     = map[string]bool{"config": true, "encoding": true, "format": true, "color": true, "filter": true}
+	redactValueFlags   = map[string]bool{"config": true, "raw": true, "encoding": true, "format": true, "color": true}
 )
 
 // reorder moves flags ahead of positional arguments so the stdlib flag parser

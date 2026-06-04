@@ -87,6 +87,25 @@ func TestViewDescribeDecodesAndMasks(t *testing.T) {
 	}
 }
 
+func TestViewShowsEMVDotPaths(t *testing.T) {
+	t.Parallel()
+
+	code, out, _ := runApp("", "view", example("0100-auth-request.hex"), "--no-color")
+	if code != 0 {
+		t.Fatalf("view failed: %d", code)
+	}
+	// Field 55 subtags render with their full dot-path and EMV tag name, so the
+	// path is copy-pasteable for --filter and editing.
+	for _, want := range []string{
+		"55.9F26", "Application Cryptogram",
+		"55.82", "Application Interchange Profile",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("view output missing %q\n%s", want, out)
+		}
+	}
+}
+
 func TestViewJSONHasDecodedAndNoColor(t *testing.T) {
 	t.Parallel()
 
@@ -361,6 +380,61 @@ func TestInvalidColorValue(t *testing.T) {
 		if code != 1 || !strings.Contains(errOut, "invalid --color") {
 			t.Fatalf("%s --color banana: code=%d err=%q", cmd, code, errOut)
 		}
+	}
+}
+
+func TestDiffCommand(t *testing.T) {
+	t.Parallel()
+
+	req := example("0100-auth-request.hex")
+	resp := example("0110-auth-response.hex")
+
+	// Different messages produce changes; exit 0.
+	code, out, _ := runApp("", "diff", req, resp)
+	if code != 0 || !strings.Contains(out, "changed") {
+		t.Fatalf("diff: code=%d out=%q", code, out)
+	}
+	// Identical messages report no differences.
+	if code, out, _ := runApp("", "diff", resp, resp); code != 0 || !strings.Contains(out, "No differences.") {
+		t.Fatalf("diff identical: code=%d out=%q", code, out)
+	}
+	// JSON output is structured.
+	if code, out, _ := runApp("", "diff", req, resp, "--format", "json"); code != 0 || !strings.Contains(out, "\"changes\"") {
+		t.Fatalf("diff json: code=%d out=%q", code, out)
+	}
+	// One side may be stdin.
+	_, hexData, _ := runApp("", "sample", "0110-auth-response", "--format", "hex")
+	if code, out, _ := runApp(hexData, "diff", req, "-"); code != 0 || out == "" {
+		t.Fatalf("diff stdin: code=%d out=%q", code, out)
+	}
+	// Two stdin sides is an error.
+	if code, _, errOut := runApp("", "diff", "-", "-"); code != 1 || !strings.Contains(errOut, "stdin") {
+		t.Fatalf("diff two stdin: code=%d err=%q", code, errOut)
+	}
+	// Wrong arity.
+	if code, _, _ := runApp("", "diff", req); code != 1 {
+		t.Fatal("diff with one arg should fail")
+	}
+}
+
+func TestRedactCommand(t *testing.T) {
+	t.Parallel()
+
+	req := example("0100-auth-request.hex")
+
+	// JSON (default) masks the PAN and never leaks it.
+	code, out, _ := runApp("", "redact", req)
+	if code != 0 || !strings.Contains(out, "411111******1111") || strings.Contains(out, "4111111111111111") {
+		t.Fatalf("redact json: code=%d out=%q", code, out)
+	}
+	// Text format lists redacted paths.
+	if code, out, _ := runApp("", "redact", req, "--format", "text"); code != 0 || !strings.Contains(out, "Redacted:") {
+		t.Fatalf("redact text: code=%d out=%q", code, out)
+	}
+	// stdin works.
+	_, hexData, _ := runApp("", "sample", "0100-auth-request", "--format", "hex")
+	if code, out, _ := runApp(hexData, "redact", "-"); code != 0 || strings.Contains(out, "4111111111111111") {
+		t.Fatalf("redact stdin: code=%d out=%q", code, out)
 	}
 }
 

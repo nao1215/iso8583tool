@@ -12,13 +12,13 @@ Describe 'iso8583tool ergonomics'
     It 'accepts the target after the flags'
       When run iso8583tool view --format json "$EXAMPLES/0110-auth-response.hex"
       The status should be success
-      The output should include '"message"'
+      The output should include '"mti"'
     End
 
     It 'accepts the target before the flags'
       When run iso8583tool view "$EXAMPLES/0110-auth-response.hex" --format json
       The status should be success
-      The output should include '"message"'
+      The output should include '"mti"'
     End
 
     It 'accepts flags interleaved around the target'

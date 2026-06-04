@@ -36,7 +36,7 @@ type DecodedField struct {
 
 func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionCatalog, format string, filters []string, pal render.Palette) (ViewResult, error) {
 	msg := iso8583.NewMessage(spec)
-	if err := msg.Unpack(raw); err != nil {
+	if err := safeUnpack(msg, raw); err != nil {
 		return ViewResult{}, errors.New(diagnoseUnpack(err, raw).String())
 	}
 
@@ -68,18 +68,29 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			Decoded:     decoded,
 		}, nil
 	case "json":
+		// Document-shaped, jq-friendly output: mti/fields/binary_fields share the
+		// same representation as convert, redact and diff. Map keys are sorted by
+		// encoding/json, so the output is deterministic and scriptable.
+		doc, err := MessageToDocument(spec, raw)
+		if err != nil {
+			return ViewResult{}, err
+		}
 		payload := struct {
-			Message     *iso8583.Message       `json:"message"`
-			Summary     string                 `json:"summary,omitempty"`
-			Extensions  []basei.ExtensionField `json:"extension_fields,omitempty"`
-			UnknownTags []UnknownTag           `json:"unknown_tags,omitempty"`
-			Decoded     []DecodedField         `json:"decoded,omitempty"`
+			MTI          string                 `json:"mti"`
+			Fields       map[string]string      `json:"fields,omitempty"`
+			BinaryFields map[string]string      `json:"binary_fields,omitempty"`
+			Summary      string                 `json:"summary,omitempty"`
+			Extensions   []basei.ExtensionField `json:"extension_fields,omitempty"`
+			UnknownTags  []UnknownTag           `json:"unknown_tags,omitempty"`
+			Decoded      []DecodedField         `json:"decoded,omitempty"`
 		}{
-			Message:     msg,
-			Summary:     summary,
-			Extensions:  extensions,
-			UnknownTags: unknownTags,
-			Decoded:     decoded,
+			MTI:          doc.MTI,
+			Fields:       doc.Fields,
+			BinaryFields: doc.BinaryFields,
+			Summary:      summary,
+			Extensions:   extensions,
+			UnknownTags:  unknownTags,
+			Decoded:      decoded,
 		}
 		data, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -361,12 +372,19 @@ func colorizeFieldLine(line, parentPrefix string, pal render.Palette) string {
 
 	id := fieldID(label)
 	path := id
-	if parentPrefix != "" {
-		path = parentPrefix + "." + id
-	}
-
 	coloredLabel := label
-	if token := strings.Fields(label); len(token) > 0 {
+	token := strings.Fields(label)
+
+	if parentPrefix != "" && len(token) > 0 {
+		// Subfield: show the full dot-path (e.g. 55.9F26) instead of moov's
+		// "F9F26", trimming alignment dots so the value column stays put.
+		path = parentPrefix + "." + id
+		rest := label[len(token[0]):]
+		if delta := len(path) - len(token[0]); delta > 0 {
+			rest = trimTrailingDots(rest, delta)
+		}
+		coloredLabel = pal.Green(path) + rest
+	} else if len(token) > 0 {
 		coloredLabel = strings.Replace(label, token[0], pal.Green(token[0]), 1)
 	}
 
@@ -375,6 +393,15 @@ func colorizeFieldLine(line, parentPrefix string, pal render.Palette) string {
 		rendered += "  " + pal.Cyan("→ "+meaning)
 	}
 	return rendered
+}
+
+// trimTrailingDots removes up to n trailing '.' runes from s.
+func trimTrailingDots(s string, n int) string {
+	for n > 0 && strings.HasSuffix(s, ".") {
+		s = s[:len(s)-1]
+		n--
+	}
+	return s
 }
 
 func activeExtensions(fields map[int]field.Field, catalog basei.ExtensionCatalog) []basei.ExtensionField {

@@ -49,7 +49,7 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 	}
 
 	msg := iso8583.NewMessage(spec)
-	if err := msg.Unpack(raw); err != nil {
+	if err := safeUnpack(msg, raw); err != nil {
 		diag := diagnoseUnpack(err, raw)
 		path := diag.Path
 		if path == "" {

@@ -37,7 +37,7 @@ Describe 'README examples'
     It 'shows JSON output'
       When run iso8583tool view "$EXAMPLES/0110-auth-response.hex" --format json
       The status should be success
-      The output should include '"message"'
+      The output should include '"fields"'
     End
 
     It 'filters the requested fields'
@@ -50,6 +50,40 @@ Describe 'README examples'
       When run sh -c 'cat "$EXAMPLES/0110-auth-response.hex" | "$ISO_BIN" view -'
       The status should be success
       The output should include 'MTI'
+    End
+
+    It 'is jq-compatible for fields'
+      When run sh -c '"$ISO_BIN" view "$EXAMPLES/0110-auth-response.hex" --format json | jq -r ".fields[\"39\"]"'
+      The status should be success
+      The output should equal '00'
+    End
+  End
+
+  Describe 'diff'
+    It 'compares a request and a response'
+      When run iso8583tool diff "$EXAMPLES/0100-auth-request.hex" "$EXAMPLES/0110-auth-response.hex"
+      The status should be success
+      The output should include 'changed'
+    End
+
+    It 'is jq-compatible for changes'
+      When run sh -c '"$ISO_BIN" diff "$EXAMPLES/0100-auth-request.hex" "$EXAMPLES/0110-auth-response.hex" --format json | jq -r ".changes[].path" | head -n1'
+      The status should be success
+      The output should be present
+    End
+  End
+
+  Describe 'redact'
+    It 'masks the PAN for safe sharing'
+      When run iso8583tool redact "$EXAMPLES/0100-auth-request.hex"
+      The status should be success
+      The output should not include '4111111111111111'
+    End
+
+    It 'supports a text format'
+      When run iso8583tool redact "$EXAMPLES/0100-auth-request.hex" --format text
+      The status should be success
+      The output should include 'Redacted:'
     End
   End
 

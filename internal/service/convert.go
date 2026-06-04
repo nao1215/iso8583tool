@@ -19,7 +19,7 @@ import (
 // preserve unknown TLV tags.
 func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, error) {
 	msg := iso8583.NewMessage(spec)
-	if err := msg.Unpack(raw); err != nil {
+	if err := safeUnpack(msg, raw); err != nil {
 		return messageio.Document{}, err
 	}
 	mti, err := msg.GetMTI()
