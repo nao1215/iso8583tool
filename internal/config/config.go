@@ -26,7 +26,7 @@ type Config struct {
 	// Extensions is an inline extension-field catalog that replaces the built-in
 	// one. A nil slice (the key omitted) keeps the built-in BASE I catalog; an
 	// explicit empty array disables it entirely. The omitempty tag only affects
-	// marshalling, so this omitted-vs-explicit-empty distinction survives a load.
+	// marshaling, so this omitted-vs-explicit-empty distinction survives a load.
 	Extensions []basei.ExtensionField `json:"extensions,omitempty"`
 }
 
