@@ -1,6 +1,10 @@
 package basei
 
-import "github.com/nao1215/iso8583tool/internal/messageio"
+import (
+	"maps"
+
+	"github.com/nao1215/iso8583tool/internal/messageio"
+)
 
 type Sample struct {
 	Name     string
@@ -19,6 +23,36 @@ func StarterSamples() []Sample {
 			Name:     "0110-auth-response",
 			Summary:  "EMV authorization response with issuer data in field 55 and opaque field 63",
 			Document: AuthResponse(),
+		},
+		{
+			Name:     "0200-financial-request",
+			Summary:  "Card-present purchase request with EMV data and BASE I style private fields",
+			Document: FinancialRequest(),
+		},
+		{
+			Name:     "0210-financial-response",
+			Summary:  "Approved financial response with issuer response code and settlement note",
+			Document: FinancialResponse(),
+		},
+		{
+			Name:     "0420-reversal-advice",
+			Summary:  "Reversal advice carrying original data elements for timeout recovery",
+			Document: ReversalAdvice(),
+		},
+		{
+			Name:     "0430-reversal-response",
+			Summary:  "Reversal advice response confirming the original purchase was reversed",
+			Document: ReversalResponse(),
+		},
+		{
+			Name:     "0800-network-echo",
+			Summary:  "Network management echo test request using NMIC 301",
+			Document: NetworkEchoRequest(),
+		},
+		{
+			Name:     "0810-network-echo-response",
+			Summary:  "Network management echo test response confirming host reachability",
+			Document: NetworkEchoResponse(),
 		},
 	}
 }
@@ -108,5 +142,109 @@ func AuthResponse() messageio.Document {
 			"55.8A": "3030",
 			"55.91": "A1B2C3D4E5F60708",
 		},
+	}
+}
+
+func FinancialRequest() messageio.Document {
+	doc := cloneDocument(AuthRequest())
+	doc.MTI = "0200"
+	doc.Fields["4"] = "000000012345"
+	doc.Fields["7"] = "0604130105"
+	doc.Fields["11"] = "223344"
+	doc.Fields["12"] = "130105"
+	doc.Fields["22"] = "071"
+	doc.Fields["35"] = "4111111111111111D29122011234567890"
+	doc.Fields["37"] = "FIN200000001"
+	doc.Fields["41"] = "TERMID02"
+	doc.Fields["42"] = "MERCHANT0000002"
+	doc.Fields["48"] = "INVOICE=900001|TIP=000000000500"
+	doc.Fields["49"] = "840"
+	doc.Fields["62"] = "ORDERID=000900|CHANNEL=POS"
+	doc.BinaryFields["55.5F2A"] = "0840"
+	doc.BinaryFields["55.9F02"] = "000000012345"
+	doc.BinaryFields["55.9F1A"] = "0840"
+	doc.BinaryFields["55.9F36"] = "0042"
+	doc.BinaryFields["55.9F41"] = "00000002"
+	return doc
+}
+
+func FinancialResponse() messageio.Document {
+	doc := cloneDocument(AuthResponse())
+	doc.MTI = "0210"
+	doc.Fields["4"] = "000000012345"
+	doc.Fields["7"] = "0604130105"
+	doc.Fields["11"] = "223344"
+	doc.Fields["12"] = "130106"
+	doc.Fields["37"] = "FIN200000001"
+	doc.Fields["38"] = "B65432"
+	doc.Fields["41"] = "TERMID02"
+	doc.Fields["42"] = "MERCHANT0000002"
+	doc.Fields["48"] = "APPROVED=Y|BATCH=PENDING"
+	doc.Fields["49"] = "840"
+	doc.Fields["63"] = "SETTLEMENT=QUEUED"
+	doc.BinaryFields["55.8A"] = "3030"
+	doc.BinaryFields["55.91"] = "CAFEBABE01020304"
+	return doc
+}
+
+func ReversalAdvice() messageio.Document {
+	doc := cloneDocument(FinancialRequest())
+	doc.MTI = "0420"
+	doc.Fields["7"] = "0604151515"
+	doc.Fields["11"] = "223355"
+	doc.Fields["12"] = "151515"
+	doc.Fields["37"] = "REV223355001"
+	doc.Fields["48"] = "REVERSAL=TIMEOUT|REASON=NO_ISSUER_REPLY"
+	doc.Fields["90"] = "020022334406041301050000000000000000000000"
+	doc.BinaryFields["55.9F36"] = "0043"
+	doc.BinaryFields["55.9F41"] = "00000003"
+	return doc
+}
+
+func ReversalResponse() messageio.Document {
+	doc := cloneDocument(ReversalAdvice())
+	doc.MTI = "0430"
+	doc.Fields["12"] = "151516"
+	doc.Fields["38"] = "R76543"
+	doc.Fields["39"] = "00"
+	doc.Fields["48"] = "REVERSAL=ACCEPTED|FOLLOWUP=NONE"
+	doc.Fields["63"] = "REVERSAL=BOOKED"
+	doc.BinaryFields = map[string]string{
+		"55.8A": "3030",
+		"55.91": "0A0B0C0D0E0F1011",
+	}
+	return doc
+}
+
+func NetworkEchoRequest() messageio.Document {
+	return messageio.Document{
+		MTI: "0800",
+		Fields: map[string]string{
+			"7":  "0604161616",
+			"11": "654321",
+			"12": "161616",
+			"13": "0604",
+			"24": "001",
+			"41": "TERMNET1",
+			"48": "HEARTBEAT=BASEI",
+			"70": "301",
+		},
+	}
+}
+
+func NetworkEchoResponse() messageio.Document {
+	doc := cloneDocument(NetworkEchoRequest())
+	doc.MTI = "0810"
+	doc.Fields["12"] = "161617"
+	doc.Fields["39"] = "00"
+	doc.Fields["63"] = "ECHO=OK"
+	return doc
+}
+
+func cloneDocument(doc messageio.Document) messageio.Document {
+	return messageio.Document{
+		MTI:          doc.MTI,
+		Fields:       maps.Clone(doc.Fields),
+		BinaryFields: maps.Clone(doc.BinaryFields),
 	}
 }

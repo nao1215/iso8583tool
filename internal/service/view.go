@@ -121,6 +121,11 @@ func Summarize(msg *iso8583.Message) string {
 			parts = append(parts, m)
 		}
 	}
+	if v, ok := get(70); ok {
+		if m, ok := annotate.FieldMeaning("70", v); ok {
+			parts = append(parts, m)
+		}
+	}
 	if amount, ok := get(4); ok {
 		currency, _ := get(49)
 		if s, ok := annotate.FormatAmount(amount, currency); ok {

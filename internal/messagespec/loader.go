@@ -30,7 +30,7 @@ func Load(baseDir string, cfg config.Config) (*Spec, error) {
 		}, nil
 	case "spec87ascii":
 		return &Spec{
-			MessageSpec: moovspecs.Spec87ASCII,
+			MessageSpec: basei.Spec87ASCIIWithSecondaryFields(),
 			Label:       "spec87ascii",
 		}, nil
 	default:

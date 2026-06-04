@@ -7,7 +7,10 @@ func TestMTI(t *testing.T) {
 	cases := map[string]string{
 		"0100": "Authorization Request from Acquirer (ISO8583:1987)",
 		"0110": "Authorization Request response from Acquirer (ISO8583:1987)",
+		"0200": "Financial Request from Acquirer (ISO8583:1987)",
+		"0420": "Reversal Advice from Acquirer (ISO8583:1987)",
 		"0800": "Network management Request from Acquirer (ISO8583:1987)",
+		"0810": "Network management Request response from Acquirer (ISO8583:1987)",
 	}
 	for mti, want := range cases {
 		if got := MTI(mti); got != want {
@@ -35,6 +38,7 @@ func TestFieldMeaning(t *testing.T) {
 		{"55.9F1A", "0392", "Japan"},              // country code
 		{"22", "051", "Integrated circuit card (ICC); PIN entry capable"},
 		{"25", "00", "Normal presentment"},             // POS condition
+		{"70", "301", "Echo test"},                     // network management code
 		{"55.9C", "00", "Purchase / goods & services"}, // EMV transaction type
 		{"55.9F27", "80", "ARQC (online authorization requested)"},
 		{"55.8A", "3030", "Approved"}, // ARC = ASCII "00"
@@ -48,6 +52,9 @@ func TestFieldMeaning(t *testing.T) {
 
 	if _, ok := FieldMeaning("39", "ZZ"); ok {
 		t.Error("FieldMeaning unknown response code should not match")
+	}
+	if _, ok := FieldMeaning("70", "999"); ok {
+		t.Error("FieldMeaning unknown network code should not match")
 	}
 	if _, ok := FieldMeaning("11", "123456"); ok {
 		t.Error("FieldMeaning for a non-coded field should not match")

@@ -84,6 +84,10 @@ func FieldMeaning(path, value string) (string, bool) {
 		if name, ok := posConditionCodes[twoDigits(value)]; ok {
 			return name, true
 		}
+	case "70": // network management information code
+		if name, ok := networkManagementCodes[leftPad(value, 3)]; ok {
+			return name, true
+		}
 	case "55.9F27": // Cryptogram Information Data
 		return cryptogramInfo(value)
 	case "7": // Transmission date & time MMDDhhmmss
@@ -354,6 +358,15 @@ var posConditionCodes = map[string]string{
 	"08": "Mail / telephone order",
 	"51": "Account verification",
 	"59": "E-commerce transaction",
+}
+
+var networkManagementCodes = map[string]string{
+	"001": "Sign on",
+	"002": "Sign off",
+	"161": "Session key change",
+	"162": "New key",
+	"201": "Cutover",
+	"301": "Echo test",
 }
 
 var currencyCodes = map[string]string{

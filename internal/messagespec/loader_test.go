@@ -14,6 +14,8 @@ func TestLoadPresets(t *testing.T) {
 	}
 	if s, err := Load(".", config.Config{Spec: "spec87ascii"}); err != nil || s.Label != "spec87ascii" {
 		t.Fatalf("spec87ascii: label=%q err=%v", labelOf(s), err)
+	} else if _, ok := s.MessageSpec.Fields[70]; !ok {
+		t.Fatal("spec87ascii preset should include field 70")
 	}
 	// A non-preset value is treated as a path; a non-JSON extension is rejected.
 	if _, err := Load(".", config.Config{Spec: "not-a-preset"}); err == nil {

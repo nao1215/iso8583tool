@@ -43,6 +43,15 @@ func TestSample(t *testing.T) {
 	if code, out, _ := runApp("", "sample"); code != 0 || !strings.Contains(out, "0100-auth-request") {
 		t.Fatalf("sample list: code=%d out=%q", code, out)
 	}
+	for _, want := range []string{
+		"0200-financial-request",
+		"0420-reversal-advice",
+		"0800-network-echo",
+	} {
+		if code, out, _ := runApp("", "sample"); code != 0 || !strings.Contains(out, want) {
+			t.Fatalf("sample list missing %q: code=%d out=%q", want, code, out)
+		}
+	}
 	if code, out, _ := runApp("", "sample", "0100-auth-request", "--format", "hex"); code != 0 || strings.TrimSpace(out) == "" {
 		t.Fatalf("sample hex: code=%d out=%q", code, out)
 	}
@@ -115,6 +124,21 @@ func TestViewFromStdin(t *testing.T) {
 	code, out, _ := runApp(hex, "view", "-")
 	if code != 0 || !strings.Contains(out, "MTI") {
 		t.Fatalf("view from stdin: code=%d out=%q", code, out)
+	}
+}
+
+func TestViewNetworkSampleShowsNMICMeaning(t *testing.T) {
+	t.Parallel()
+
+	_, hex, _ := runApp("", "sample", "0800-network-echo", "--format", "hex")
+	code, out, _ := runApp(hex, "view", "-")
+	if code != 0 {
+		t.Fatalf("view network sample failed: %d", code)
+	}
+	for _, want := range []string{"Echo test", "0800", "TERMNET1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("network view output missing %q\n%s", want, out)
+		}
 	}
 }
 

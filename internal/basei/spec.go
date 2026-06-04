@@ -12,17 +12,37 @@ import (
 )
 
 var starterMessageSpec = buildStarterMessageSpec()
+var spec87ASCIIWithSecondaryFields = buildSpec87ASCIIWithSecondaryFields()
 
 func StarterMessageSpec() *iso8583.MessageSpec {
 	return starterMessageSpec
 }
 
+func Spec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
+	return spec87ASCIIWithSecondaryFields
+}
+
 func buildStarterMessageSpec() *iso8583.MessageSpec {
-	fields := maps.Clone(moovspecs.Spec87ASCII.Fields)
+	fields := maps.Clone(spec87ASCIIWithSecondaryFields.Fields)
 	fields[55] = field.NewComposite(field55Spec())
 
 	return &iso8583.MessageSpec{
 		Name:   "BASE I Starter ASCII",
+		Fields: fields,
+	}
+}
+
+func buildSpec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
+	fields := maps.Clone(moovspecs.Spec87ASCII.Fields)
+	fields[70] = field.NewString(&field.Spec{
+		Length:      3,
+		Description: "Network Management Information Code",
+		Enc:         encoding.ASCII,
+		Pref:        prefix.ASCII.Fixed,
+	})
+
+	return &iso8583.MessageSpec{
+		Name:   "ISO 8583:1987 ASCII",
 		Fields: fields,
 	}
 }
