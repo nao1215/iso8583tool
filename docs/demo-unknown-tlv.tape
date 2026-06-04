@@ -20,8 +20,8 @@ Show
 
 Sleep 600ms
 
-# The document feeds Field 55 as one raw TLV blob that mixes known EMV tags
-# with an unknown proprietary tag (DF8129).
+# The document feeds Field 55 per tag, including an unknown proprietary tag
+# (DF8129) alongside known EMV tags.
 Type "cat examples/basei/0100-auth-request-unknown-tlv.json"
 Sleep 300ms
 Enter

@@ -42,8 +42,8 @@ Sleep 400ms
 Enter
 Sleep 3s
 
-# 4. Build a packed message back from a JSON document.
-Type "iso8583tool convert examples/basei/0100-auth-request.json --output /tmp/req.hex"
+# 4. Switch to a plain ISO 8583:1987 ASCII spec with --config.
+Type "iso8583tool validate examples/spec87ascii/0800-network-echo.hex --config examples/spec87ascii.config.json"
 Sleep 400ms
 Enter
 Sleep 2500ms
