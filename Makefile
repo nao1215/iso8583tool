@@ -28,8 +28,10 @@ tools: ## Install developer tools (linter, coverage, shellspec for e2e)
 	$(GO_INSTALL) github.com/k1LoW/octocov@latest
 	curl -fsSL https://git.io/shellspec | sh -s 0.28.1 --yes
 
-demo: build ## Regenerate the README GIFs from docs/*.tape (needs vhs)
+demo: build ## Regenerate the README GIF from docs/demo.tape (needs vhs)
 	@command -v vhs >/dev/null || { echo 'vhs is required: go install github.com/charmbracelet/vhs@latest'; exit 1; }
+	@cp examples/basei/0100-auth-request.hex /tmp/before.hex
+	@./$(APP) convert examples/basei/0100-auth-request.hex | sed 's/000000005000/000000009999/' | ./$(APP) convert > /tmp/after.hex
 	@for tape in docs/*.tape; do vhs "$$tape"; done
 	@echo 'Regenerated docs/*.gif'
 

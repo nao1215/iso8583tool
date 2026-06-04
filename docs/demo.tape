@@ -1,20 +1,17 @@
-# VHS tape for iso8583tool demo.
-# Build the binary first:  make build
-# Render:                  vhs docs/demo.tape
-#
-# Output: docs/demo.gif
+# Overview demo: inspect, compare, redact.
+# Render: make build && vhs docs/demo.tape  -> docs/demo.gif
+# (before.hex/after.hex are prepared by the Makefile `demo` target.)
 
 Output docs/demo.gif
 
 Set Shell "bash"
-Set FontSize 18
-Set Width 1100
-Set Height 820
-Set Padding 16
-Set TypingSpeed 45ms
+Set FontSize 14
+Set Width 1080
+Set Height 900
+Set Padding 14
+Set TypingSpeed 35ms
 Set Theme "Catppuccin Mocha"
 
-# Put the freshly built binary on PATH so the typed commands stay clean.
 Hide
 Type "export PATH=$PWD:$PATH PS1='$ '"
 Enter
@@ -22,30 +19,32 @@ Type "clear"
 Enter
 Show
 
-Sleep 600ms
+Sleep 500ms
 
-# 1. List the built-in BASE I samples.
-Type "iso8583tool sample"
-Sleep 400ms
+# Inspect a message: values decoded, PAN masked.
+Type "iso8583tool view examples/basei/0110-auth-response.hex"
+Sleep 300ms
 Enter
-Sleep 2s
+Sleep 4s
 
-# 2. Inspect a 0100 auth request whose Field 55 carries an unknown EMV tag.
-Type "iso8583tool view examples/basei/0100-auth-request-unknown-tlv.hex"
-Sleep 400ms
+Hide
+Type "clear"
 Enter
-Sleep 3s
+Show
 
-# 3. Validate it: the unknown TLV tag is reported as a warning, not an error.
-Type "iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex"
-Sleep 400ms
+# Compare two messages.
+Type "iso8583tool diff /tmp/before.hex /tmp/after.hex"
+Sleep 300ms
 Enter
-Sleep 3s
+Sleep 3500ms
 
-# 4. Switch to a plain ISO 8583:1987 ASCII spec with --config.
-Type "iso8583tool validate examples/spec87ascii/0800-network-echo.hex --config examples/spec87ascii.config.json"
-Sleep 400ms
+Hide
+Type "clear"
 Enter
-Sleep 2500ms
+Show
 
-Sleep 1s
+# Mask cardholder data before sharing.
+Type "iso8583tool redact examples/basei/0110-auth-response.hex --format text"
+Sleep 300ms
+Enter
+Sleep 3500ms
