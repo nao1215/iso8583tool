@@ -1,0 +1,6 @@
+# Keep line endings LF on every platform so generated fixtures, hex, and shell
+# specs match byte-for-byte (avoids CRLF drift on Windows checkouts).
+* text=auto eol=lf
+
+*.gif binary
+*.png binary
