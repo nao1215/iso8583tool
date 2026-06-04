@@ -87,21 +87,17 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 	report.Decoded = DecodeFields(msg)
 	report.Summary = Summarize(msg)
 
+	// An extension field's strategy (opaque, tlv, positional, bitmap) is a
+	// configured presentation choice, not a defect. It is reported under
+	// "Extension Field Strategy" only. Issues are reserved for real problems
+	// such as unknown TLV tags or fields that fail to unpack.
 	for _, ext := range activeExtensions(msg.GetFields(), catalog) {
-		note := extensionNote(ext)
 		report.Extensions = append(report.Extensions, ExtensionNotice{
 			Field:    ext.ID,
 			Name:     ext.Name,
 			Strategy: string(ext.Strategy),
-			Note:     note,
+			Note:     extensionNote(ext),
 		})
-		if ext.Strategy == basei.StrategyOpaque {
-			report.Issues = append(report.Issues, ValidationIssue{
-				Severity: "warning",
-				Path:     fmt.Sprintf("%d", ext.ID),
-				Message:  "extension field is still opaque; nested parsing and editing are intentionally deferred",
-			})
-		}
 	}
 
 	report.UnknownTags = collectUnknownTags(msg)

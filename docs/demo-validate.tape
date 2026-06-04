@@ -20,8 +20,8 @@ Show
 
 Sleep 500ms
 
-# A good message: decoded fields, an opaque-field warning -> still exit 0.
-Type "iso8583tool validate examples/basei/0110-auth-response.hex"
+# A good message: decoded fields, an unknown-TLV-tag warning -> still exit 0.
+Type "iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex"
 Sleep 300ms
 Enter
 Sleep 3500ms
