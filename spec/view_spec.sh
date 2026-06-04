@@ -20,7 +20,7 @@ Describe 'iso8583tool view'
     It 'masks the PAN'
       When run iso8583tool view "$EXAMPLES/0110-auth-response.hex"
       The status should be success
-      The output should include '4111****1111'
+      The output should include '411111******1111'
       The output should not include '4111111111111111'
     End
   End

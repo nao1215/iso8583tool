@@ -68,7 +68,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	switch format {
 	case "", "describe", "text":
 		var buf bytes.Buffer
-		if err := iso8583.Describe(msg, &buf); err != nil {
+		if err := iso8583.Describe(msg, &buf, safeDescribeFilters()...); err != nil {
 			return ViewResult{}, err
 		}
 		body := colorizeDescribe(maskUnknownInText(buf.String(), unknownTags), pal)

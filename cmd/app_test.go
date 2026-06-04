@@ -77,7 +77,7 @@ func TestViewDescribeDecodesAndMasks(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Summary:", "Approved", "JPY 5000", // human-readable summary
-		"4111****1111",                   // PAN masked
+		"411111******1111",               // PAN masked (BIN + last four, same as JSON/redact)
 		"06-04 12:34:56",                 // date decoded
 		"Authorization Request response", // MTI decoded
 	} {

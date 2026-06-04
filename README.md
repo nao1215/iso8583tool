@@ -79,7 +79,7 @@ cat examples/basei/0110-auth-response.hex | iso8583tool view -
 $ iso8583tool view examples/basei/0110-auth-response.hex
 Summary: 0110 · Approved · JPY 5000 · STAN 123456 · TERMID01
 ...
-F2   Primary Account Number...: 4111****1111
+F2   Primary Account Number...: 411111******1111
 F39  Response Code............: 00  → Approved
 F49  Transaction Currency Code: 392  → JPY (Japanese yen)
 55.8A Authorisation Response Code: 3030  → Approved
@@ -307,7 +307,7 @@ for a fictional acquirer lives at
 iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay.config.json
 ```
 
-## Fuzzing
+## Fuzzing and property-based tests
 
 Parsing untrusted input is fuzzed so malformed messages fail with an error
 instead of crashing:
@@ -316,8 +316,20 @@ instead of crashing:
 go test ./internal/service -run '^$' -fuzz=FuzzMessageToDocument
 ```
 
-`FuzzDiffMessages` and `FuzzRedactMessage` are also available. Crashing inputs
-are kept as regression seeds and replayed by `go test ./...`.
+The fuzz targets are `FuzzMessageToDocument`, `FuzzDiffMessages`,
+`FuzzRedactMessage`, `FuzzConvertRoundTrip` (convert is a fixed point),
+`FuzzValidateNoPanic`, and `FuzzViewNeverLeaksPAN` (the text view masks each
+cardholder field exactly). Crashing or failing inputs are kept as regression
+seeds and replayed by `go test ./...`.
+
+Property-based tests ([pgregory.net/rapid](https://pgregory.net/rapid)) assert
+the higher-level invariants — convert round-trips, redact never leaks a
+cardholder value, diff is symmetric and reflexive, the masks preserve length,
+and strict validation is monotonic. Run more cases with:
+
+```shell
+go test ./internal/service -run TestPBT -rapid.checks=20000
+```
 
 ## Development
 

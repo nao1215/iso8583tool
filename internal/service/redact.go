@@ -6,9 +6,32 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
+	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
+
+// safeDescribeFilters returns moov Describe filters that mask the cardholder
+// fields with the same length-preserving masks the JSON view uses. moov's own
+// Track1/Track2/Track3 filters silently return the value unchanged when they
+// cannot parse it as well-formed track data — and in the basei-starter spec the
+// track fields are plain strings, so they never parse, which would leak full
+// track data (PAN, expiry, discretionary) through the text view. Our masks do
+// not depend on parsing, so they always mask.
+func safeDescribeFilters() []iso8583.FieldFilter {
+	mask := func(fn func(string) string) iso8583.FilterFunc {
+		return func(in string, _ field.Field) string { return fn(in) }
+	}
+	return []iso8583.FieldFilter{
+		iso8583.FilterField("2", mask(maskPAN)),
+		iso8583.FilterField("20", mask(maskPAN)),
+		iso8583.FilterField("35", mask(maskTrack)),
+		iso8583.FilterField("36", mask(maskTrack)),
+		iso8583.FilterField("45", mask(maskTrack)),
+		iso8583.FilterField("52", mask(maskAll)),
+		iso8583.FilterField("55", iso8583.EMVFilter),
+	}
+}
 
 // cardholderEMVTags are Field 55 tags that carry the PAN, track, or PIN in EMV
 // form. They are masked anywhere a message is displayed.

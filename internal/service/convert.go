@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
+	"github.com/moov-io/iso8583/encoding"
 	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
@@ -98,6 +99,19 @@ func appendFieldToDocument(doc *messageio.Document, path string, f field.Field) 
 		return nil
 	}
 
+	// Binary-encoded primitives (e.g. F52 PIN, MAC fields) carry raw bytes that
+	// are not meaningful as text and would put control characters in the JSON.
+	// Emit them as hex in binary_fields so the document is clean and, crucially,
+	// so masking (redact/view) can reach them by path.
+	if isBinaryEncodedField(f) {
+		b, err := f.Bytes()
+		if err != nil {
+			return fmt.Errorf("field %s: %w", path, err)
+		}
+		doc.BinaryFields[path] = upperHex(b)
+		return nil
+	}
+
 	str, err := f.String()
 	if err != nil {
 		b, bErr := f.Bytes()
@@ -109,6 +123,21 @@ func appendFieldToDocument(doc *messageio.Document, path string, f field.Field) 
 	}
 	doc.Fields[path] = canonicalFieldValue(f, str)
 	return nil
+}
+
+// isBinaryEncodedField reports whether a primitive field is encoded as raw bytes
+// on the wire (binary or ASCII-hex), so its value is best represented as hex.
+func isBinaryEncodedField(f field.Field) bool {
+	s := f.Spec()
+	if s == nil || s.Enc == nil {
+		return false
+	}
+	switch s.Enc {
+	case encoding.Binary, encoding.BytesToASCIIHex, encoding.ASCIIHexToBytes:
+		return true
+	default:
+		return false
+	}
 }
 
 type compositeField interface {
