@@ -87,7 +87,7 @@ func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Documen
 			doc.BinaryFields[path] = strings.ToUpper(hex.EncodeToString(b))
 			continue
 		}
-		doc.Fields[path] = str
+		doc.Fields[path] = canonicalFieldValue(f, str)
 	}
 
 	if len(doc.Fields) == 0 {
@@ -97,4 +97,22 @@ func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Documen
 		doc.BinaryFields = nil
 	}
 	return doc, nil
+}
+
+// canonicalFieldValue restores the on-the-wire, edit-ready representation of a
+// primitive field value. Fixed-length fields that declare a padder (e.g. the
+// zero-padded amount fields F3/F4) lose their padding when unpacked, so
+// field.String() yields "5000" instead of "000000005000". Re-applying the
+// field's own padder reproduces the canonical value that the JSON samples and
+// the README document, which also packs back to the identical bytes. Fields
+// without a padder, and variable-length fields, are returned unchanged.
+func canonicalFieldValue(f field.Field, str string) string {
+	spec := f.Spec()
+	if spec == nil || spec.Pad == nil || spec.Pref == nil {
+		return str
+	}
+	if !strings.HasSuffix(spec.Pref.Inspect(), ".Fixed") {
+		return str
+	}
+	return string(spec.Pad.Pad([]byte(str), spec.Length))
 }

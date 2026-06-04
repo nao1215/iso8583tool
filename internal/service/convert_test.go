@@ -46,6 +46,37 @@ func TestConvertRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConvertCanonicalFixedLength(t *testing.T) {
+	t.Parallel()
+
+	spec, err := messagespec.Load(".", config.Default())
+	if err != nil {
+		t.Fatalf("messagespec.Load returned error: %v", err)
+	}
+
+	packed, err := WriteMessage(basei.AuthRequest(), spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("WriteMessage returned error: %v", err)
+	}
+
+	doc, err := MessageToDocument(spec.MessageSpec, packed.Raw)
+	if err != nil {
+		t.Fatalf("MessageToDocument returned error: %v", err)
+	}
+
+	// Zero-padded fixed-length fields must keep their canonical width instead of
+	// collapsing to the integer form (F3 "000000", F4 "000000005000"), matching
+	// the JSON samples and the README so the output is edit-ready.
+	for path, want := range map[string]string{
+		"3": "000000",
+		"4": "000000005000",
+	} {
+		if got := doc.Fields[path]; got != want {
+			t.Fatalf("field %s = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestConvertUnknownTagEditable(t *testing.T) {
 	t.Parallel()
 
