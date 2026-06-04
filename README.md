@@ -10,7 +10,6 @@
 ![GitHub](https://img.shields.io/github/license/nao1215/iso8583tool)
 
 A command-line tool for debugging and inspecting ISO 8583 payment messages.
-Defaults to BASE I; other layouts are loaded from a `--config` spec.
 
 ![demo](./docs/demo.gif)
 
@@ -20,12 +19,10 @@ iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-r
 iso8583tool redact examples/basei/0100-auth-request.hex
 ```
 
-Input comes from a file or stdin, and output is colored text on a terminal or
-plain JSON, so commands pipe into `jq`, `grep`, and other tools:
+Messages come from a file, `-`, or stdin, and JSON output pipes into `jq`:
 
 ```shell
 iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
-cat examples/basei/0110-auth-response.hex | iso8583tool view -
 ```
 
 ## Install
@@ -57,7 +54,7 @@ positional argument. Use `--` before a dash-leading filename.
 ```text
 view       Unpack and inspect a message
 diff       Compare two messages field by field
-redact     Mask sensitive fields for safe sharing
+redact     Mask PAN, track, and EMV sensitive data
 convert    Convert between a packed message and a JSON document
 validate   Check that a message unpacks and report issues
 sample     List or export built-in BASE I samples
@@ -84,9 +81,8 @@ iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fiel
 
 ## `diff`
 
-Compares two messages by field path, including nested EMV tags such as
-`55.9F02`. Changes are marked added / removed / changed in a stable order.
-Either side may be `-` for stdin.
+Compares two messages by field path, including nested EMV tags. Either side may
+be `-` for stdin.
 
 ```shell
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
@@ -96,9 +92,8 @@ iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-r
 
 ## `redact`
 
-Masks the PAN, track data, PIN, and sensitive EMV tags (such as the application
-cryptogram) so a message can be shared. The output is a sanitized document, not
-a re-packable message.
+Masks the PAN, track data, PIN, and sensitive EMV tags. Output is a sanitized
+document, not a re-packable message.
 
 ```shell
 iso8583tool redact examples/basei/0100-auth-request.hex
@@ -118,8 +113,7 @@ iso8583tool sample 0100-auth-request --format hex | iso8583tool convert
 iso8583tool convert examples/basei/0100-auth-request.json --output out.hex
 ```
 
-Unknown Field 55 tags are kept when converting, so a message round-trips to the
-same bytes.
+Unknown Field 55 tags are preserved when converting.
 
 ## `validate`
 
@@ -168,10 +162,9 @@ keep their padded form, so a document is easy to edit and pack back.
 
 ## BASE I defaults
 
-The default spec is `basei-starter`: ASCII 1987 with Field 55 modeled as EMV
-BER-TLV. Samples live under [`examples/basei`](./examples/basei). Each private
-field has a strategy so the path stays stable as a field is promoted from raw to
-structured:
+The default spec is `basei-starter`: ASCII 1987 with Field 55 as EMV BER-TLV.
+Samples live under [`examples/basei`](./examples/basei). Each private field has a
+strategy:
 
 | Field | Strategy   | Notes |
 |-------|------------|-------|
