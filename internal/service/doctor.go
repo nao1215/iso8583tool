@@ -33,6 +33,9 @@ type SpecCandidate struct {
 // SpecDiagnosis is the result of trying every built-in preset against a message.
 type SpecDiagnosis struct {
 	Bytes int `json:"bytes"`
+	// InputEncoding records how the input bytes were read (hex or raw). It is
+	// filled by the caller and is most useful when the encoding was auto-detected.
+	InputEncoding string `json:"input_encoding,omitempty"`
 	// Recommended is the --spec value of the best-fitting preset, or empty when
 	// no preset could unpack the message.
 	Recommended string `json:"recommended,omitempty"`

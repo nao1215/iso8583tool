@@ -58,3 +58,30 @@ func TestReadSourceAcceptsInputAtLimit(t *testing.T) {
 		t.Fatalf("read %d bytes, want %d", len(got), MaxInputSize)
 	}
 }
+
+func TestLooksLikeHex(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   []byte
+		want bool
+	}{
+		{"plain hex", []byte("3031323300"), true},
+		{"upper hex", []byte("DEADBEEF"), true},
+		{"hex with whitespace", []byte("30 31\n32 33"), true},
+		{"odd length", []byte("303"), false},
+		{"empty", []byte(""), false},
+		{"whitespace only", []byte("  \n"), false},
+		{"raw binary with control byte", []byte{0x01, 0x00, 0x70, 0x04}, false},
+		{"non-hex letters", []byte("hello!"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := LooksLikeHex(tc.in); got != tc.want {
+				t.Errorf("LooksLikeHex(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `doctor` now auto-detects the input encoding (hex text vs raw bytes), so a raw
+  `*.bin` capture works without `--encoding raw`. Previously `doctor message.bin`
+  failed with a hex-decode error, which defeated the point of a detection tool.
+  The detected encoding is shown, and the `Confirm with:` hint carries
+  `--encoding raw` when needed. Override with `--encoding hex|raw`.
+- A hex-decode failure now suggests `--encoding raw` for a raw binary message
+  instead of only printing the low-level decode error.
+
 ## [0.2.0] - 2026-06-05
 
 ### Added
