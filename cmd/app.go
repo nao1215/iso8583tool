@@ -315,6 +315,7 @@ func (a *App) sideStdin(target string) io.Reader {
 func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
 	if len(result.Changes) == 0 {
 		writeLine(a.stdout, "No differences.")
+		a.printMissingFilters(result.MissingFilters, pal)
 		return
 	}
 	for i, c := range result.Changes {
@@ -336,6 +337,16 @@ func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
 			writef(a.stdout, "%s\n", pal.Green("+ "+c.After))
 		}
 	}
+	a.printMissingFilters(result.MissingFilters, pal)
+}
+
+// printMissingFilters notes any filters that matched no field in either message,
+// so an unmatched filter (typo) is distinguishable from a real no-change result.
+func (a *App) printMissingFilters(missing []string, pal render.Palette) {
+	if len(missing) == 0 {
+		return
+	}
+	writef(a.stdout, "%s %s\n", pal.Yellow("No field matched filter:"), strings.Join(missing, ", "))
 }
 
 func (a *App) runRedact(args []string) int {

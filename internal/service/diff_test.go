@@ -120,3 +120,59 @@ func TestDiffDeterministicOrderAndFilter(t *testing.T) {
 		t.Fatalf("filter 55 expected 2 changes, got %#v", filtered.Changes)
 	}
 }
+
+// TestDiffFilterAliasesAndNormalization covers the MTI alias, case-insensitive
+// EMV tag matching, and unmatched-filter feedback.
+func TestDiffFilterAliasesAndNormalization(t *testing.T) {
+	t.Parallel()
+	spec := diffSpec(t)
+
+	before := basei.AuthRequest()
+	before.Fields["4"] = "000000001000"
+	before.BinaryFields["55.9F02"] = "000000001000"
+	beforeRaw, _ := WriteMessage(before, spec.MessageSpec)
+
+	after := basei.AuthRequest()
+	after.MTI = "0110"
+	after.Fields["4"] = "000000005000"
+	after.BinaryFields["55.9F02"] = "000000009999"
+	afterRaw, _ := WriteMessage(after, spec.MessageSpec)
+
+	// bug 45: "0" is an MTI alias just like "mti".
+	for _, f := range []string{"0", "mti"} {
+		res, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{f}, false)
+		if err != nil {
+			t.Fatalf("DiffMessages filter %q: %v", f, err)
+		}
+		if len(res.Changes) != 1 || res.Changes[0].Path != "mti" {
+			t.Fatalf("filter %q should select the MTI change, got %#v", f, res.Changes)
+		}
+	}
+
+	// bug 14: a lowercase EMV tag filter selects the same path as uppercase.
+	lower, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"55.9f02"}, false)
+	if err != nil {
+		t.Fatalf("DiffMessages lowercase tag: %v", err)
+	}
+	if len(lower.Changes) != 1 || lower.Changes[0].Path != "55.9F02" {
+		t.Fatalf("lowercase tag filter should select 55.9F02, got %#v", lower.Changes)
+	}
+
+	// bug 46: a filter that matches nothing is reported, distinguishing a typo
+	// from a real no-change result.
+	miss, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"999"}, false)
+	if err != nil {
+		t.Fatalf("DiffMessages unmatched: %v", err)
+	}
+	if len(miss.MissingFilters) != 1 || miss.MissingFilters[0] != "999" {
+		t.Fatalf("unmatched filter should be reported, got %#v", miss.MissingFilters)
+	}
+	// A filter that matches an existing but unchanged field is not "missing".
+	same, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"11"}, false)
+	if err != nil {
+		t.Fatalf("DiffMessages unchanged: %v", err)
+	}
+	if len(same.MissingFilters) != 0 {
+		t.Fatalf("a matched-but-unchanged filter must not be reported missing, got %#v", same.MissingFilters)
+	}
+}
