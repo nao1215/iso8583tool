@@ -353,18 +353,23 @@ keep their padded form, so a document is easy to edit and pack back.
 ## BASE I defaults
 
 The default spec is `basei-starter`: ASCII 1987 with Field 55 as EMV BER-TLV.
-Samples live under [`examples/basei`](./examples/basei). Each private field has a
-strategy:
+Samples live under [`examples/basei`](./examples/basei). `view` reports each
+private field's strategy — how the active spec actually models it. In
+`basei-starter`, field 55 is a BER-TLV composite and the other private fields are
+plain values (`opaque`); the catalog note hints at the structured layout each
+could take in a custom spec:
 
-| Field | Strategy   | Notes |
-|-------|------------|-------|
-| 48    | positional | raw string; can grow into `48.1`, `48.2`, ... |
-| 55    | tlv        | EMV BER-TLV, edited per tag; unknown tags preserved |
-| 62    | positional | reserved private |
-| 63    | opaque     | raw until the partner format is stable |
-| 127   | bitmap     | nested bitmap / subelement territory |
+| Field | Shown as | Notes |
+|-------|----------|-------|
+| 48    | opaque   | plain value; suggest a positional overlay once the segment layout is fixed |
+| 55    | tlv      | EMV BER-TLV, edited per tag; unknown tags preserved |
+| 62    | opaque   | reserved private |
+| 63    | opaque   | raw until the partner format is stable |
+| 127   | opaque   | plain value; nested-bitmap territory for a custom spec |
 
-Field 55 is edited per tag, and unknown tags survive a round trip:
+A dot-path such as `48.1` works only when the active spec models field 48 as a
+composite (a custom `--spec`), not under the plain-value built-in. Field 55 is
+edited per tag, and unknown tags survive a round trip:
 
 ```shell
 iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex | iso8583tool convert | iso8583tool view - --filter 55.DF8129
@@ -421,16 +426,19 @@ instead of crashing:
 go test ./internal/service -run '^$' -fuzz=FuzzMessageToDocument
 ```
 
-The fuzz targets are `FuzzMessageToDocument`, `FuzzDiffMessages`,
+The service targets are `FuzzMessageToDocument`, `FuzzDiffMessages`,
 `FuzzRedactMessage`, `FuzzConvertRoundTrip` (convert is a fixed point),
 `FuzzValidateNoPanic`, and `FuzzViewNeverLeaksPAN` (the text view masks each
-cardholder field exactly). Crashing or failing inputs are kept as regression
-seeds and replayed by `go test ./...`.
+cardholder field exactly). Document parsing and rendering are fuzzed too —
+`FuzzParseDocument`, `FuzzCanonicalPath`, `FuzzDecodeInput` (internal/messageio),
+and `FuzzSanitizeControl` (internal/render). Crashing or failing inputs are kept
+as regression seeds and replayed by `go test ./...`.
 
 Property-based tests ([pgregory.net/rapid](https://pgregory.net/rapid)) assert
 the higher-level invariants — convert round-trips, redact never leaks a
-cardholder value, diff is symmetric and reflexive, the masks preserve length,
-and strict validation is monotonic. Run more cases with:
+cardholder value and is idempotent, diff is symmetric and reflexive, hex
+encode/decode are inverses, the masks preserve length, and strict validation is
+monotonic. Run more cases with:
 
 ```shell
 go test ./internal/service -run TestPBT -rapid.checks=20000
