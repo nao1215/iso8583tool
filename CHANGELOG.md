@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate --strict` now rejects an alphabetic value in a numeric field. The
+  network-management code (70), original/replacement amounts (90, 95), net
+  settlement amount (97), institution-identification codes (99, 100), and the
+  other digits-only data elements are checked to contain only digits. moov models
+  these as String (a 42-digit value overflows a fixed-width integer), so an
+  alphabetic value packs; strict now flags it instead of reporting `ok`.
+
 - The `spec87bcd-starter` preset now packs every numeric secondary-bitmap field
   as packed BCD, matching its packed-BCD intent. The message-number, date-action,
   count, amount, original/replacement-amount, and net-settlement fields

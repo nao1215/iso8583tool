@@ -78,6 +78,20 @@ func buildSpec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
 	}
 }
 
+// NumericSecondaryFields lists the digits-only ISO 8583 fields whose value must
+// be numeric: the primary numeric data elements and the numeric secondary-bitmap
+// fields (message numbers, date-action, counts, amounts, original/replacement
+// amounts, net settlement, and institution-identification codes). moov models
+// these as String (a 42-digit field overflows a fixed-width integer), so strict
+// validation checks the value is all digits rather than relying on the type.
+var NumericSecondaryFields = []int{
+	3, 4, 7, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+	66, 67, 68, 69, 70, 71, 72, 73,
+	74, 75, 76, 77, 78, 79, 80, 81,
+	82, 83, 84, 85, 86, 87, 88, 89, 90,
+	93, 94, 95, 97, 99, 100,
+}
+
 // secondaryBitmapFields returns the standard ISO 8583:1987 fields 66-128
 // (excluding 90, which moov already defines). Fixed numeric/alphanumeric fields
 // use an ASCII fixed prefix; the variable trailing fields use ASCII LL/LLL; the
