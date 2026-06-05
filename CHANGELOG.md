@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `redact` now defaults to `--encoding auto` like `view`, `validate`, `convert`,
+  and `diff`. A raw `*.bin` capture (and an all-numeric raw ASCII message) is read
+  correctly without `--encoding raw`; previously `redact` alone defaulted to
+  `hex` and failed with `encoding/hex: invalid byte` on raw input even though its
+  own help advertised `auto|hex|raw`.
 - `convert` now rejects malformed and ambiguous document paths instead of
   silently mis-packing them. Field id `0` (the MTI) and `1` (the bitmap) can no
   longer be set through `fields` or `binary_fields`; a non-numeric or
