@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The full `view` describe output no longer over-masks a composite subfield whose
+  local id collides with a top-level cardholder field. The top-level PAN/track/
+  PIN masks (fields 2/34, 35/36/45, 52) are applied by dot-path, so a custom
+  positional or bitmap composite subfield such as `48.2` or `127.2` keeps its real
+  value instead of being masked by the field-2 PAN rule. The text view now masks
+  the same paths as the JSON and diff views.
+- Sensitive-data masking covers more free-form representations:
+  - A labeled track (`TRACK2=4111…D2912…`, also `TRACK1=`/`TRACK=`) is masked in
+    full, so the expiry, service code, and discretionary data trailing the PAN no
+    longer leak — previously only the embedded PAN was masked.
+  - PAN key labels are recognized in their common real-world spellings:
+    underscore (`card_no`, `pan_no`, `account_no`), spaced (`card number`,
+    `acct number`), hyphenated (`card-number`), long snake-case
+    (`primary_account_number`), and camelCase (`primaryAccountNumber`).
+
 - The `Extension Field Strategy` section now describes how the active spec
   actually models each field instead of the catalog's BASE I assumption: a
   positional composite reports `positional`, a bitmap composite `bitmap`, a

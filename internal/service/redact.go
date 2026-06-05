@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
-	"github.com/moov-io/iso8583/encoding"
 	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
@@ -43,9 +42,30 @@ var contentScanFieldIDs = map[string]bool{
 var embeddedPANPattern = regexp.MustCompile(`[0-9](?:[ -]?[0-9]){12,18}`)
 
 // panKeyPattern matches a PAN-ish key label immediately before a candidate (for
-// example "PAN=" or "card no: "), so an explicitly labeled account number is
-// masked even when its digits are not Luhn-valid (some test PANs are not).
-var panKeyPattern = regexp.MustCompile(`(?i)\b(pan|cardnumber|cardno|card|account|acct|cvv|cvc|cc)[\s:=]*$`)
+// example "PAN=", "card no: ", "card_no=", "primary_account_number="), so an
+// explicitly labeled account number is masked even when its digits are not
+// Luhn-valid (some test PANs are not). The label may carry an optional "primary"
+// prefix and an optional "number"/"no"/"num" suffix joined by a space, hyphen,
+// or underscore, so snake_case, kebab-case, spaced, and camelCase spellings all
+// match.
+var panKeyPattern = regexp.MustCompile(`(?i)\b(?:primary[\s_-]*)?(?:pan|card|acct|account|cc|cvv|cvc)(?:[\s_-]*(?:numbers?|nums?|nos?))?[\s:=]*$`)
+
+// trackKeyPattern matches a free-form track label (TRACK, TRACK1, TRACK2, ...)
+// and the track value that follows it. The whole track — PAN, expiry, service
+// code, and discretionary data — is masked, not just the embedded PAN.
+var trackKeyPattern = regexp.MustCompile(`(?i)(\btrack\s*[123]?\s*[\s:=]+)([0-9A-Za-z][0-9A-Za-z=^/]*)`)
+
+// maskLabeledTracks masks the value after any free-form track label, so a
+// "TRACK2=4111...D2912..." string does not leak the expiry/service/discretionary
+// trailing the PAN. The label is kept; only the track data is masked.
+func maskLabeledTracks(value string) string {
+	return trackKeyPattern.ReplaceAllStringFunc(value, func(m string) string {
+		idx := trackKeyPattern.FindStringSubmatchIndex(m)
+		label := m[idx[2]:idx[3]]
+		data := m[idx[4]:idx[5]]
+		return label + maskAll(data)
+	})
+}
 
 // maskEmbeddedSensitive masks PAN-shaped runs inside a free-form value, keeping
 // the BIN and last four and preserving any grouping separators. To avoid masking
@@ -53,6 +73,9 @@ var panKeyPattern = regexp.MustCompile(`(?i)\b(pan|cardnumber|cardno|card|accoun
 // when its digits pass the Luhn check or it directly follows a PAN-ish key label;
 // an arbitrary numeric id satisfies neither.
 func maskEmbeddedSensitive(value string) string {
+	// Mask any explicitly labeled track first (whole value, not just the PAN),
+	// then scan for PAN candidates in what remains.
+	value = maskLabeledTracks(value)
 	locs := embeddedPANPattern.FindAllStringIndex(value, -1)
 	if locs == nil {
 		return value
@@ -151,23 +174,16 @@ func binaryEmbedsSensitive(hexValue string) bool {
 	return maskEmbeddedSensitive(s) != s
 }
 
-// safeDescribeFilters returns moov Describe filters that mask the cardholder
-// fields with the same length-preserving masks the JSON view uses. moov's own
-// Track1/Track2/Track3 filters silently return the value unchanged when they
-// cannot parse it as well-formed track data — and in the basei-starter spec the
-// track fields are plain strings, so they never parse, which would leak full
-// track data (PAN, expiry, discretionary) through the text view. Our masks do
-// not depend on parsing, so they always mask.
+// safeDescribeFilters returns moov Describe filters that normalize each present
+// primitive field to its canonical (zero-padded) width, so the describe output
+// shows the same width as the JSON and filtered views — moov's describe prints
+// field.String(), which drops a fixed-length field's padding.
 //
-// It also registers a canonical filter for every present primitive field so the
-// describe output shows the same zero-padded width as the JSON and filtered
-// views (moov's describe prints field.String(), which drops a fixed-length
-// field's padding). The sensitive masks are appended last so they override the
-// canonical filter for the fields they cover.
+// Sensitive masking is NOT done here. moov applies a filter keyed by a field's
+// id at every composite level, so a top-level mask for PAN field 2 would also
+// hit an unrelated composite subfield keyed "2". Masking is instead applied
+// per dot-path in colorizeDescribe, where the full path is known.
 func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
-	mask := func(fn func(string) string) iso8583.FilterFunc {
-		return func(in string, _ field.Field) string { return fn(in) }
-	}
 	canonical := func(in string, f field.Field) string { return canonicalFieldValue(f, in) }
 
 	var filters []iso8583.FieldFilter
@@ -176,38 +192,6 @@ func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
 			continue
 		}
 		filters = append(filters, iso8583.FilterField(strconv.Itoa(id), canonical))
-	}
-
-	for id := range panFieldIDs {
-		filters = append(filters, iso8583.FilterField(id, mask(maskPAN)))
-	}
-	for id := range trackFieldIDs {
-		filters = append(filters, iso8583.FilterField(id, mask(maskTrack)))
-	}
-	for id := range secretFieldIDs {
-		filters = append(filters, iso8583.FilterField(id, mask(maskAll)))
-	}
-	// Sensitive EMV/TLV tags are masked by their tag key, so a tag is covered
-	// wherever it nests (55.57, 127.57, 55.70.57) because describe applies the
-	// same filter map to every composite level. moov keys filters by bare id, so
-	// a decimal EMV tag (56/57/99) would also match the same-numbered top-level
-	// ISO field (which is a plain ASCII reserved/settlement field, not cardholder
-	// data); guard with the binary encoding EMV tags carry to avoid that.
-	emvMask := func(in string, f field.Field) string {
-		if f != nil {
-			if s := f.Spec(); s != nil && s.Enc == encoding.Binary {
-				return maskAll(in)
-			}
-		}
-		return in
-	}
-	for _, tag := range cardholderEMVTags {
-		filters = append(filters, iso8583.FilterField(tag, emvMask))
-	}
-	// Content-scan the free-form / private fields so an embedded PAN does not leak
-	// through the text view.
-	for id := range contentScanFieldIDs {
-		filters = append(filters, iso8583.FilterField(id, mask(maskEmbeddedSensitive)))
 	}
 	return filters
 }
