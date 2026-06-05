@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The bundled `examples/spec87ascii/0800-network-echo` sample now carries the
+  network-management code in field 70, so it passes `validate --strict` under its
+  intended `spec87ascii` preset instead of failing for a missing field 70.
+
 - Help requested on the success path now prints to stdout instead of stderr:
   `--help`, `help <command>`, `<command> --help`, and the no-argument overview.
   Error-path usage (an unknown command, a bad flag, or trailing arguments) still
