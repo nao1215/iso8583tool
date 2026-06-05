@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `convert` now tolerates a UTF-8 BOM (`EF BB BF`) at the start of a JSON
+  document. Auto-detection no longer mistakes a BOM-prefixed object for hex, and
+  an explicit `--to hex` no longer fails JSON parsing on the BOM. Editors and
+  some exporters prepend the BOM even though it is not valid JSON.
+
 - Zero-padded fixed-length fields now show their canonical width consistently
   across every surface. The full `view` describe output and the `decoded[].value`
   entries (in both `view --format json` and `validate --format json`) previously

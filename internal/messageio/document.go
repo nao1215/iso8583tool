@@ -1,12 +1,18 @@
 package messageio
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// utf8BOM is the UTF-8 byte order mark. Editors and some exporters prepend it to
+// a JSON file; it is not valid JSON and breaks both detection and decoding, so
+// it is stripped before either.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 type Document struct {
 	MTI          string            `json:"mti"`
@@ -16,6 +22,7 @@ type Document struct {
 
 // ParseDocument decodes and validates a message document from JSON bytes.
 func ParseDocument(data []byte) (Document, error) {
+	data = bytes.TrimPrefix(data, utf8BOM)
 	var doc Document
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return Document{}, err
@@ -29,6 +36,7 @@ func ParseDocument(data []byte) (Document, error) {
 // LooksLikeJSON reports whether the raw input is a JSON document (used to pick
 // the convert direction).
 func LooksLikeJSON(data []byte) bool {
+	data = bytes.TrimPrefix(data, utf8BOM)
 	for _, b := range data {
 		switch b {
 		case ' ', '\t', '\r', '\n':
