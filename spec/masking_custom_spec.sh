@@ -62,4 +62,31 @@ Describe 'iso8583tool masking under custom specs'
     The status should be success
     The output should not include '4111111111111111'
   End
+
+  # A custom spec gives a field id its own meaning, so the BASE I positional rules
+  # (field 35 = track, 52 = PIN) must not over-mask a harmless value. Content
+  # scanning still masks anything PAN- or track-shaped, so nothing sensitive leaks.
+  It 'does not over-mask a harmless custom field 35'
+    build '{"name":"F35","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"35":{"type":"String","length":37,"description":"Partner Reference","enc":"ASCII","prefix":"ASCII.LL"}}}' \
+      '{"mti":"0110","fields":{"11":"123456","35":"REF-ORDER-ABC-0001"}}'
+    When run iso8583tool view "$WORK/m.hex" --spec "$WORK/spec.json" --format json
+    The status should be success
+    The output should include 'REF-ORDER-ABC-0001'
+  End
+
+  It 'does not over-mask a harmless custom field 52'
+    build '{"name":"F52","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"52":{"type":"String","length":8,"description":"Partner Status","enc":"ASCII","prefix":"ASCII.Fixed"}}}' \
+      '{"mti":"0110","fields":{"11":"123456","52":"ABCDEFGH"}}'
+    When run iso8583tool view "$WORK/m.hex" --spec "$WORK/spec.json" --format json
+    The status should be success
+    The output should include 'ABCDEFGH'
+  End
+
+  It 'still masks a real PAN in a custom field 2'
+    build '{"name":"F2","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"2":{"type":"String","length":19,"description":"Account","enc":"ASCII","prefix":"ASCII.LL"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"}}}' \
+      '{"mti":"0110","fields":{"2":"4111111111111111","11":"123456"}}'
+    When run iso8583tool view "$WORK/m.hex" --spec "$WORK/spec.json" --format json
+    The status should be success
+    The output should not include '4111111111111111'
+  End
 End

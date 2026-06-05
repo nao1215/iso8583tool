@@ -27,12 +27,37 @@ func Spec87BCDStarter() *iso8583.MessageSpec {
 	return spec87BCDStarter
 }
 
+// The MessageSpec.Name of each bundled preset. They identify a built-in BASE I
+// spec so masking can tell whether the standard positional/TLV field semantics
+// apply (see IsBuiltinMessageSpec).
+const (
+	starterMessageSpecName     = "BASE I Starter ASCII"
+	spec87ASCIIMessageSpecName = "ISO 8583:1987 ASCII"
+	spec87BCDMessageSpecName   = "ISO 8583:1987 Packed BCD Starter"
+)
+
+// IsBuiltinMessageSpec reports whether spec is one of the bundled BASE I presets.
+// Cardholder-data masking uses this to decide whether the BASE I positional and
+// EMV-tag field semantics apply: a custom --spec PATH assigns its own meaning to
+// those field ids and TLV tags, so only content scanning (PAN/track-shaped
+// values) and unknown-tag masking apply there.
+func IsBuiltinMessageSpec(spec *iso8583.MessageSpec) bool {
+	if spec == nil {
+		return false
+	}
+	switch spec.Name {
+	case starterMessageSpecName, spec87ASCIIMessageSpecName, spec87BCDMessageSpecName:
+		return true
+	}
+	return false
+}
+
 func buildStarterMessageSpec() *iso8583.MessageSpec {
 	fields := maps.Clone(spec87ASCIIWithSecondaryFields.Fields)
 	fields[55] = field.NewComposite(field55Spec())
 
 	return &iso8583.MessageSpec{
-		Name:   "BASE I Starter ASCII",
+		Name:   starterMessageSpecName,
 		Fields: fields,
 	}
 }
@@ -50,7 +75,7 @@ func buildSpec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
 	}
 
 	return &iso8583.MessageSpec{
-		Name:   "ISO 8583:1987 ASCII",
+		Name:   spec87ASCIIMessageSpecName,
 		Fields: fields,
 	}
 }
@@ -201,7 +226,7 @@ func buildSpec87BCDStarter() *iso8583.MessageSpec {
 	fields[55] = field.NewComposite(emv)
 
 	return &iso8583.MessageSpec{
-		Name:   "ISO 8583:1987 Packed BCD Starter",
+		Name:   spec87BCDMessageSpecName,
 		Fields: fields,
 	}
 }

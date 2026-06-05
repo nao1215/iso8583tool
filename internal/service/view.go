@@ -57,11 +57,12 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 
 	// maskForDisplay applies the default masking unless the caller opted into raw
 	// output, so the filtered and json branches share one masking decision.
+	builtinSemantics := basei.IsBuiltinMessageSpec(spec)
 	maskForDisplay := func(doc *messageio.Document) {
 		if unsafe {
 			return
 		}
-		MaskCardholderData(doc)
+		MaskCardholderData(doc, builtinSemantics)
 		maskUnknownInDocument(doc, unknownTags)
 	}
 
@@ -95,7 +96,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		var maskFn func(path, value string) string
 		if !unsafe {
 			body = maskUnknownInText(body, unknownTags)
-			maskFn = func(path, value string) string { return maskValueForDiff(path, value, nil) }
+			maskFn = func(path, value string) string { return maskValueForDiff(path, value, nil, builtinSemantics) }
 		}
 		body = colorizeDescribe(body, pal, maskFn)
 		return ViewResult{

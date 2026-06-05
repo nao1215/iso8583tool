@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sensitive-data masking no longer over-masks a harmless field under a custom
+  `--spec PATH`. The BASE I positional rules (field 35 = track, 52 = PIN) apply
+  only to the bundled presets; under a custom spec those field ids carry
+  partner-defined meaning, so a value like `REF-ORDER-ABC-0001` in field 35 or a
+  partner status in field 52 is left intact. Safety is preserved by content
+  scanning every field, so a real or labeled PAN (in any field) is still masked,
+  and known cardholder EMV/TLV tags remain masked in every spec.
+
 - The full `view` describe output no longer over-masks a composite subfield whose
   local id collides with a top-level cardholder field. The top-level PAN/track/
   PIN masks (fields 2/34, 35/36/45, 52) are applied by dot-path, so a custom

@@ -7,6 +7,7 @@ import (
 
 	"github.com/moov-io/iso8583"
 
+	"github.com/nao1215/iso8583tool/internal/basei"
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
 
@@ -61,7 +62,10 @@ func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []str
 	mask := func(_, value string) string { return value }
 	if !unsafe {
 		unknownPaths := diffUnknownPaths(spec, before, after)
-		mask = func(path, value string) string { return maskValueForDiff(path, value, unknownPaths) }
+		builtinSemantics := basei.IsBuiltinMessageSpec(spec)
+		mask = func(path, value string) string {
+			return maskValueForDiff(path, value, unknownPaths, builtinSemantics)
+		}
 	}
 
 	paths := unionPaths(beforeMap, afterMap)
