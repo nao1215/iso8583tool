@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `view`, `validate`, `diff`, and `redact` text output now escape control/ANSI
+  bytes carried in a field value (caret notation, like `cat -v`: ESC becomes
+  `^[`), so a poisoned message — for example a terminal id holding an
+  `ESC[2J` screen-clear — can no longer move the cursor, clear the screen, or
+  recolor the terminal when its report is printed. JSON output already escaped
+  such bytes, and printable text (including the `·` summary separator) is
+  unchanged.
+
 - `convert` rejects raw bytes routed to an ASCII text field through
   `binary_fields`. A field the spec models as ASCII text (for example the STAN
   11, response code 39, terminal id 41, currency 49, or a free-form field like
