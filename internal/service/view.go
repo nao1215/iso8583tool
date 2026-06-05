@@ -407,12 +407,22 @@ func decodeSubfields(parent string, subfields map[string]field.Field) []DecodedF
 
 	var decoded []DecodedField
 	for _, tag := range tags {
-		value, err := subfields[tag].String()
+		f := subfields[tag]
+		path := parent + "." + tag
+		// A constructed TLV tag (for example 55.70) is itself a composite; recurse
+		// so its leaves (55.70.8A, ...) are decoded and annotated, not just the
+		// parent's packed bytes.
+		if composite, ok := f.(interface {
+			GetSubfields() map[string]field.Field
+		}); ok {
+			decoded = append(decoded, decodeSubfields(path, composite.GetSubfields())...)
+			continue
+		}
+		value, err := f.String()
 		if err != nil {
 			continue
 		}
-		value = canonicalFieldValue(subfields[tag], value)
-		path := parent + "." + tag
+		value = canonicalFieldValue(f, value)
 		if meaning, ok := annotate.FieldMeaning(path, value); ok {
 			decoded = append(decoded, DecodedField{Path: path, Value: value, Meaning: meaning})
 		}
@@ -424,8 +434,12 @@ func decodeSubfields(parent string, subfields map[string]field.Field) []DecodedF
 // and inline meaning annotations while preserving its layout (and masking).
 func colorizeDescribe(plain string, pal render.Palette) string {
 	lines := strings.Split(strings.TrimRight(plain, "\n"), "\n")
-	parentPrefix := ""
-	dashesSeen := 0
+	// stack holds the composite ids currently open, outermost first, so a leaf or
+	// nested header reports its full dot-path (for example 55.70.9F02 or F48.2)
+	// even several composites deep. moov delimits each composite with a dashes
+	// line right after its header (an "open") and another at its end (a "close").
+	var stack []string
+	expectOpenDash := false
 
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -433,12 +447,10 @@ func colorizeDescribe(plain string, pal render.Palette) string {
 		case strings.HasSuffix(line, "Message:"):
 			out = append(out, pal.BoldCyan(line))
 		case isDashes(line):
-			if parentPrefix != "" {
-				dashesSeen++
-				if dashesSeen >= 2 {
-					parentPrefix = ""
-					dashesSeen = 0
-				}
+			if expectOpenDash {
+				expectOpenDash = false
+			} else if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
 			}
 			out = append(out, pal.Dim(line))
 		case strings.HasPrefix(line, "Bitmap"):
@@ -446,16 +458,32 @@ func colorizeDescribe(plain string, pal render.Palette) string {
 		case strings.HasPrefix(line, "MTI"):
 			out = append(out, colorizeMTILine(line, pal))
 		case strings.HasPrefix(line, "F") && strings.Contains(line, "SUBFIELDS:"):
-			parentPrefix = fieldID(line)
-			dashesSeen = 0
-			out = append(out, pal.Magenta(line))
+			fullPath := fieldID(line)
+			if len(stack) > 0 {
+				fullPath = strings.Join(stack, ".") + "." + fullPath
+			}
+			stack = append(stack, fieldID(line))
+			expectOpenDash = true
+			out = append(out, colorizeSubfieldsHeader(line, fullPath, pal))
 		case strings.HasPrefix(line, "F") && strings.Contains(line, ": "):
-			out = append(out, colorizeFieldLine(line, parentPrefix, pal))
+			out = append(out, colorizeFieldLine(line, strings.Join(stack, "."), pal))
 		default:
 			out = append(out, line)
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// colorizeSubfieldsHeader rewrites a "F<localid> <desc> SUBFIELDS:" header so it
+// shows the composite's full dot-path (for example "F48.2") instead of moov's
+// local id, then colors it.
+func colorizeSubfieldsHeader(line, fullPath string, pal render.Palette) string {
+	token := strings.Fields(line)
+	if len(token) == 0 {
+		return pal.Magenta(line)
+	}
+	rest := strings.TrimLeft(line[len(token[0]):], " ")
+	return pal.Magenta("F" + fullPath + " " + rest)
 }
 
 func isDashes(line string) bool {

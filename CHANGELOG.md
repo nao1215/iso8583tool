@@ -9,11 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The full `view` describe output now keeps the parent path of a nested
+  composite at any depth. A constructed BER-TLV leaf shows as `55.70.9F02` (and
+  its header as `F55.70`), and a nested positional composite shows as `48.2.1`
+  (header `F48.2`), instead of collapsing to the immediate parent (`70.9F02` /
+  `2.1`). A known EMV tag is annotated even when nested — `55.70.8A` resolves to
+  its ARC meaning and `55.70.9A` to its date — and those nested leaves now appear
+  in the `decoded[]` list of `view --format json` and `validate --format json`.
 - `view`, `validate`, `convert`, and `doctor` now tolerate a UTF-8 BOM
   (`EF BB BF`) at the start of a hex fixture, the way the JSON path already did.
   An editor that saves a hex capture with a BOM no longer breaks auto-detection
   (the file is read as hex, not mistaken for raw) or hex decoding. An explicit
   `--encoding raw` still treats the BOM bytes as part of the raw message.
+- `redact` now defaults to `--encoding auto` like `view`, `validate`, `convert`,
+  and `diff`. A raw `*.bin` capture (and an all-numeric raw ASCII message) is read
+  correctly without `--encoding raw`; previously `redact` alone defaulted to
+  `hex` and failed with `encoding/hex: invalid byte` on raw input even though its
+  own help advertised `auto|hex|raw`.
 - `convert` now rejects malformed and ambiguous document paths instead of
   silently mis-packing them. Field id `0` (the MTI) and `1` (the bitmap) can no
   longer be set through `fields` or `binary_fields`; a non-numeric or
