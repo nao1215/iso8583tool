@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nao1215/iso8583tool/internal/basei"
@@ -71,5 +72,72 @@ func TestStrictAcceptsCompleteAdviceAndNetwork(t *testing.T) {
 				t.Fatalf("complete %s should pass --strict, got %#v", doc.MTI, report.Issues)
 			}
 		})
+	}
+}
+
+// TestStrictRejectsHollowNotificationInstructionAndFileAction covers the MTI
+// functions (notification, ack, instruction, ack) and classes (file action,
+// reversal) that previously passed --strict with only a STAN.
+func TestStrictRejectsHollowNotificationInstructionAndFileAction(t *testing.T) {
+	t.Parallel()
+
+	// Every MTI here carries only field 11, so strict must report an error.
+	for _, mti := range []string{
+		"0140", "0150", "0160", "0170", // authorization notification/ack/instruction/ack
+		"0240", "0250", "0260", "0270", // financial notification/ack/instruction/ack
+		"0300", "0320", "0340", "0360", // file action requests/notifications/instructions
+		"0310", "0330", "0350", "0370", // file action responses/acks
+		"0440", "0450", "0460", "0470", // reversal notification/ack/instruction/ack
+	} {
+		report := strictReport(t, messageio.Document{MTI: mti, Fields: map[string]string{"11": "123456"}})
+		if report.Valid {
+			t.Errorf("a hollow %s must fail strict validation, got valid", mti)
+		}
+	}
+}
+
+// TestStrictReversalRequiresPANSource pins that a reversal request/advice must
+// carry a PAN source (field 2, 35, or 45), tying it to the original transaction.
+func TestStrictReversalRequiresPANSource(t *testing.T) {
+	t.Parallel()
+
+	for _, mti := range []string{"0400", "0420"} {
+		doc := messageio.Document{MTI: mti, Fields: map[string]string{
+			"4": "000000001000", "7": "0605123456", "11": "123456",
+			"90": "020022334406041301050000000000000000000000",
+		}}
+		report := strictReport(t, doc)
+		if report.Valid {
+			t.Errorf("a PAN-less reversal %s must fail strict validation", mti)
+		}
+		// Adding a PAN makes it pass.
+		doc.Fields["2"] = "4111111111111111"
+		if report := strictReport(t, doc); !report.Valid {
+			t.Errorf("a reversal %s with a PAN should pass strict, issues=%v", mti, report.Issues)
+		}
+	}
+}
+
+// TestStrictWarnsOnUnmodeledClasses pins that reconciliation/administrative/fee
+// collection messages are flagged (warning) rather than silently passing as
+// fully validated.
+func TestStrictWarnsOnUnmodeledClasses(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ mti, want string }{
+		{"0500", "reconciliation"},
+		{"0600", "administrative"},
+		{"0700", "fee collection"},
+	} {
+		report := strictReport(t, messageio.Document{MTI: tc.mti, Fields: map[string]string{"11": "123456"}})
+		found := false
+		for _, issue := range report.Issues {
+			if issue.Severity == SeverityWarning && strings.Contains(issue.Message, tc.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s should warn that strict rules for %s are not implemented, issues=%v", tc.mti, tc.want, report.Issues)
+		}
 	}
 }
