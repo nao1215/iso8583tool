@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `convert` now rejects malformed and ambiguous document paths instead of
+  silently mis-packing them. Field id `0` (the MTI) and `1` (the bitmap) can no
+  longer be set through `fields` or `binary_fields`; a non-numeric or
+  out-of-range id, leading/trailing whitespace, and empty path segments
+  (`55..9F02`, `55.`) are reported with a clear message; and two spellings of the
+  same field — `02` and `2`, or the BER-TLV tags `55.9f02` and `55.9F02` — are
+  rejected as duplicate aliases instead of letting one silently overwrite the
+  other.
+
 ## [0.3.0] - 2026-06-05
 
 This release fixes a broad set of correctness, ergonomics, and safety issues
