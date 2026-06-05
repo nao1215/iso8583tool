@@ -1165,12 +1165,18 @@ func (a *App) printValidationReport(report service.ValidationReport, pal render.
 	if report.Summary != "" {
 		writef(a.stdout, "%s %s\n", pal.Dim("Summary:"), pal.Cyan(report.Summary))
 	}
-	if len(report.Decoded) > 0 {
+	// The MTI is shown above, so it is skipped here. Only print the section when
+	// at least one non-MTI field was decoded; otherwise the heading would stand
+	// alone with nothing under it.
+	decodedFields := make([]service.DecodedField, 0, len(report.Decoded))
+	for _, d := range report.Decoded {
+		if d.Path != "0" {
+			decodedFields = append(decodedFields, d)
+		}
+	}
+	if len(decodedFields) > 0 {
 		writef(a.stdout, "\n%s\n", pal.BoldCyan("Decoded Fields:"))
-		for _, d := range report.Decoded {
-			if d.Path == "0" {
-				continue // MTI already shown above
-			}
+		for _, d := range decodedFields {
 			writef(a.stdout, "- %s = %s  %s\n",
 				pal.Green(d.Path), pal.Yellow(d.Value), pal.Cyan("→ "+d.Meaning))
 		}
