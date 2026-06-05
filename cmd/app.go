@@ -141,7 +141,7 @@ func (a *App) runView(args []string) int {
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
 	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
-	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
 	format := flagSet.String("format", "describe", "output format: describe or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
@@ -150,7 +150,7 @@ func (a *App) runView(args []string) int {
 	flagSet.Var(&filters, "filter", "only show this field path (repeatable, e.g. --filter 39 --filter 55.9F02)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Inspect an ISO8583 message with the configured spec.")
-		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding hex|raw] [--format describe|json] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding auto|hex|raw] [--format describe|json] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
 		writeLine(a.stderr, "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -176,7 +176,7 @@ func (a *App) runView(args []string) int {
 		return 1
 	}
 
-	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	input, err := a.readMessageInput(target, *raw, *encoding)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -230,7 +230,7 @@ func (a *App) runDiff(args []string) int {
 	flagSet := newFlagSet("diff", a.stderr)
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
 	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
-	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
@@ -239,7 +239,7 @@ func (a *App) runDiff(args []string) int {
 	flagSet.Var(&filters, "filter", "only compare this field path (repeatable)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Compare two ISO8583 messages field by field.")
-		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--format text|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--encoding auto|hex|raw] [--format text|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
 		writeLine(a.stderr, "Either BEFORE or AFTER may be '-' to read that side from stdin.")
 		writeLine(a.stderr, "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -273,12 +273,12 @@ func (a *App) runDiff(args []string) int {
 		return 1
 	}
 
-	before, err := messageio.ReadMessage(beforeArg, "", *encoding, a.sideStdin(beforeArg))
+	before, err := a.readSideInput(beforeArg, *encoding)
 	if err != nil {
 		writeLine(a.stderr, fmt.Errorf("before: %w", err))
 		return 1
 	}
-	after, err := messageio.ReadMessage(afterArg, "", *encoding, a.sideStdin(afterArg))
+	after, err := a.readSideInput(afterArg, *encoding)
 	if err != nil {
 		writeLine(a.stderr, fmt.Errorf("after: %w", err))
 		return 1
@@ -302,6 +302,17 @@ func (a *App) runDiff(args []string) int {
 
 	a.printDiff(result, a.palette(mode, *format))
 	return 0
+}
+
+// readSideInput reads one side of a diff, auto-detecting the input encoding when
+// --encoding is "auto". Only the side explicitly given as "-" reads stdin.
+func (a *App) readSideInput(target, encoding string) ([]byte, error) {
+	source, err := messageio.ReadSource(target, "", a.sideStdin(target))
+	if err != nil {
+		return nil, err
+	}
+	decoded, _, err := resolveInput(source, encoding)
+	return decoded, err
 }
 
 // sideStdin returns stdin only for the side explicitly given as "-".
@@ -360,7 +371,7 @@ func (a *App) runRedact(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Mask cardholder data and secrets so a message can be shared safely.")
-		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -386,7 +397,7 @@ func (a *App) runRedact(args []string) int {
 		return 1
 	}
 
-	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	input, err := a.readMessageInput(target, *raw, *encoding)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -453,11 +464,11 @@ func (a *App) runConvert(args []string) int {
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
 	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	outputPath := flagSet.String("output", "", "path to write the result")
-	encoding := flagSet.String("encoding", "hex", "message-side encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "message-side encoding: auto, hex, or raw")
 	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Convert between a packed message and a JSON document (direction auto-detected).")
-		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw]")
+		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
 		writeLine(a.stderr, "JSON input is packed to a message; a message is unpacked to a JSON document.")
 		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -503,18 +514,23 @@ func (a *App) runConvert(args []string) int {
 			writeLine(a.stderr, err)
 			return 1
 		}
-		encoded, err := messageio.EncodeOutput(result.Raw, *encoding)
+		// "auto" has no meaning for output; default the written message to hex.
+		outEnc := *encoding
+		if strings.EqualFold(strings.TrimSpace(outEnc), "auto") {
+			outEnc = "hex"
+		}
+		encoded, err := messageio.EncodeOutput(result.Raw, outEnc)
 		if err != nil {
 			writeLine(a.stderr, err)
 			return 1
 		}
-		if *encoding == "hex" {
+		if outEnc == "hex" {
 			encoded = append(encoded, '\n')
 		}
 		out = encoded
-		summary = fmt.Sprintf("packed %d fields to %s", result.FieldCount, *encoding)
+		summary = fmt.Sprintf("packed %d fields to %s", result.FieldCount, outEnc)
 	case "json": // packed message -> JSON document
-		msgRaw, err := messageio.DecodeInput(source, *encoding)
+		msgRaw, _, err := resolveInput(source, *encoding)
 		if err != nil {
 			writeLine(a.stderr, err)
 			return 1
@@ -571,14 +587,14 @@ func (a *App) runValidate(args []string) int {
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
 	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
-	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
 	format := flagSet.String("format", "text", "output format: text or json")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
 		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(a.stderr, flagSet)
@@ -604,7 +620,7 @@ func (a *App) runValidate(args []string) int {
 		return 1
 	}
 
-	input, err := messageio.ReadMessage(target, *raw, *encoding, a.inputStdin(target, *raw))
+	input, err := a.readMessageInput(target, *raw, *encoding)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -694,38 +710,58 @@ func (a *App) runDoctor(args []string) int {
 }
 
 // readDoctorInput reads the message bytes for doctor, auto-detecting the input
-// encoding when --encoding is "auto" (the default). Auto-detection is what makes
-// doctor usable on an unknown capture: a raw *.bin file no longer has to be
-// hinted with --encoding raw. An explicit hex/raw is honored as-is.
+// encoding when --encoding is "auto" (the default).
 func (a *App) readDoctorInput(target, raw, encoding string) ([]byte, string, error) {
-	enc := strings.ToLower(strings.TrimSpace(encoding))
-	if enc != "auto" {
-		input, err := messageio.ReadMessage(target, raw, encoding, a.inputStdin(target, raw))
-		return input, enc, err
-	}
-
 	source, err := messageio.ReadSource(target, raw, a.inputStdin(target, raw))
 	if err != nil {
 		return nil, "", err
 	}
+	return resolveInput(source, encoding)
+}
+
+// readMessageInput reads a message from a file, stdin, or inline value and
+// decodes it, auto-detecting the input encoding when --encoding is "auto" (the
+// default for view/validate/diff). An explicit hex/raw is honored as-is.
+func (a *App) readMessageInput(target, raw, encoding string) ([]byte, error) {
+	source, err := messageio.ReadSource(target, raw, a.inputStdin(target, raw))
+	if err != nil {
+		return nil, err
+	}
+	decoded, _, err := resolveInput(source, encoding)
+	return decoded, err
+}
+
+// resolveInput decodes raw source bytes into message bytes and reports the
+// encoding it used. An explicit hex/raw is honored as-is; "auto" detects the
+// encoding by fit so an unknown capture (a raw *.bin or an all-numeric raw ASCII
+// message) no longer has to be hinted with --encoding raw.
+func resolveInput(source []byte, encoding string) ([]byte, string, error) {
+	enc := strings.ToLower(strings.TrimSpace(encoding))
+	if enc != "auto" {
+		decoded, err := messageio.DecodeInput(source, encoding)
+		return decoded, enc, err
+	}
+	decoded, used := autoDecodeMessage(source)
+	return decoded, used, nil
+}
+
+// autoDecodeMessage decides whether source is hex text or raw bytes and returns
+// the message bytes plus the encoding it used. Non-hex bytes are raw. Valid hex
+// is decoded, unless a built-in preset fits the raw reading strictly better — an
+// all-numeric raw ASCII capture is, byte for byte, a valid even-length hex
+// string, so fit, not shape, decides. Ties keep the hex reading.
+func autoDecodeMessage(source []byte) ([]byte, string) {
 	if !messageio.LooksLikeHex(source) {
-		return source, "raw", nil
+		return source, "raw"
 	}
-	decoded, derr := messageio.DecodeInput(source, "hex")
-	if derr != nil {
-		// A hex false positive (valid hex chars that are not actually a hex
-		// message) falls back to raw rather than erroring.
-		return source, "raw", nil
+	decoded, err := messageio.DecodeInput(source, "hex")
+	if err != nil {
+		return source, "raw"
 	}
-	// The bytes are valid hex, but an all-numeric raw ASCII capture satisfies
-	// that test just as well (every digit is a hex digit and the length is
-	// even). Decide by fit: read the bytes whichever way a built-in preset
-	// recognizes better, so a raw ASCII message is not silently decoded as
-	// packed hex. Ties keep the hex reading, the historical default.
 	if service.DiagnoseSpec(source).BestScore() > service.DiagnoseSpec(decoded).BestScore() {
-		return source, "raw", nil
+		return source, "raw"
 	}
-	return decoded, "hex", nil
+	return decoded, "hex"
 }
 
 func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal render.Palette) {

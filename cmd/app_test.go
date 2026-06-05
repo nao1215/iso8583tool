@@ -569,8 +569,10 @@ func TestInputSelectionErrors(t *testing.T) {
 	if code, _, errOut := runApp("", "view", example("0110-auth-response.hex"), "--raw", "0100"); code != 1 || errOut == "" {
 		t.Fatalf("file+raw should error: code=%d err=%q", code, errOut)
 	}
-	// Bad hex is reported.
-	if code, _, errOut := runApp("", "view", "--raw", "zzzz"); code != 1 || !strings.Contains(errOut, "hex") {
+	// Bad hex under an explicit --encoding hex is reported as a hex error.
+	// (The default is now --encoding auto, under which non-hex input is read as
+	// raw rather than failing to hex-decode.)
+	if code, _, errOut := runApp("", "view", "--encoding", "hex", "--raw", "zzzz"); code != 1 || !strings.Contains(errOut, "hex") {
 		t.Fatalf("bad hex: code=%d err=%q", code, errOut)
 	}
 }
