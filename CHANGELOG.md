@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A constructed (nested) BER-TLV tag — a TLV tag whose value is itself a TLV
+  template — now expands to its leaf dot-path (for example `55.70.9F02`) when a
+  message is unpacked. It previously collapsed into the parent tag's raw blob
+  (`55.70`), so `convert` lost the child path, `view --filter 55.70.9F02`
+  reported it as `<not present>`, and `diff` reported the change against the
+  parent blob. `view --filter` and `diff` now resolve the leaf path too.
+
 - `doctor` no longer presents the default preset as the single answer when more
   than one preset fits a message equally well. The ambiguous presets are listed
   together (`--spec basei-starter or --spec spec87ascii`) with the
