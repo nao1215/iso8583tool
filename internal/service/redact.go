@@ -11,6 +11,7 @@ import (
 	"github.com/moov-io/iso8583"
 	"github.com/moov-io/iso8583/field"
 
+	"github.com/nao1215/iso8583tool/internal/basei"
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
 
@@ -221,16 +222,30 @@ const cryptogramTag = "9F26"
 // them, in place. It returns the sorted list of masked paths. This is the
 // masking that `view` applies so its output never leaks cardholder data, and it
 // is the base for `redact`.
-func MaskCardholderData(doc *messageio.Document) []string {
+//
+// builtinSemantics selects how the positional fields are treated. With the
+// bundled BASE I presets, field 2/34 is a PAN, 35/36/45 is track data, and 52 is
+// a PIN, so those field ids are masked by rule. A custom --spec PATH gives those
+// ids partner-defined meaning, so the field-id rule does not apply there; every
+// field value is content-scanned instead, which still masks anything PAN- or
+// track-shaped.
+//
+// Sensitive EMV/TLV cardholder tags (account, track, PIN) are masked regardless:
+// a known cardholder tag carries the same data in any spec, and for a redaction
+// tool the safe default is to mask it rather than risk leaking a packed track
+// whose digits a content scan of the raw bytes cannot see.
+func MaskCardholderData(doc *messageio.Document, builtinSemantics bool) []string {
 	maskedSet := map[string]bool{}
 	markMasked := func(path string) { maskedSet[path] = true }
 
-	// Positional cardholder fields, in whichever representation the document
-	// carries them. A binary representation (hex bytes, no clean digit boundary)
-	// is fully masked; a text representation keeps the BIN and last four.
-	maskPositional(doc, panFieldIDs, maskPAN, markMasked)
-	maskPositional(doc, trackFieldIDs, maskTrack, markMasked)
-	maskPositional(doc, secretFieldIDs, maskAll, markMasked)
+	if builtinSemantics {
+		// Positional cardholder fields, in whichever representation the document
+		// carries them. A binary representation (hex bytes, no clean digit boundary)
+		// is fully masked; a text representation keeps the BIN and last four.
+		maskPositional(doc, panFieldIDs, maskPAN, markMasked)
+		maskPositional(doc, trackFieldIDs, maskTrack, markMasked)
+		maskPositional(doc, secretFieldIDs, maskAll, markMasked)
+	}
 
 	// Sensitive TLV tags, masked by their leaf tag so they are caught in any
 	// container (55, 127, ...) and at any depth (55.70.57), known or unknown.
@@ -248,9 +263,11 @@ func MaskCardholderData(doc *messageio.Document) []string {
 	}
 
 	// Free-form fields can embed a PAN/track that no positional or tag rule
-	// covers, in text ("PAN=4111...") or in hex-encoded bytes.
+	// covers, in text ("PAN=4111...") or in hex-encoded bytes. Under a built-in
+	// spec only the reserved/private free-form fields are scanned; under a custom
+	// spec every field is scanned, since that is the only masking that applies.
 	for path, v := range doc.Fields {
-		if isContentScanPath(path) {
+		if !builtinSemantics || isContentScanPath(path) {
 			if mv := maskEmbeddedSensitive(v); mv != v {
 				doc.Fields[path] = mv
 				markMasked(path)
@@ -258,7 +275,7 @@ func MaskCardholderData(doc *messageio.Document) []string {
 		}
 	}
 	for path, v := range doc.BinaryFields {
-		if isContentScanPath(path) && binaryEmbedsSensitive(v) {
+		if (!builtinSemantics || isContentScanPath(path)) && binaryEmbedsSensitive(v) {
 			doc.BinaryFields[path] = maskAll(v)
 			markMasked(path)
 		}
@@ -299,7 +316,7 @@ func RedactMessage(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, [
 		return messageio.Document{}, nil, err
 	}
 
-	masked := MaskCardholderData(&doc)
+	masked := MaskCardholderData(&doc, basei.IsBuiltinMessageSpec(spec))
 	// redact also masks the application cryptogram, in any TLV container/depth.
 	for path, v := range doc.BinaryFields {
 		if tag, ok := leafTag(path); ok && tag == cryptogramTag {
@@ -394,24 +411,30 @@ func maskUnknownInText(body string, tags []UnknownTag) string {
 // the PAN keeps BIN + last four, track data keeps its BIN, and PIN, cardholder
 // TLV tags (any container/depth), and unknown TLV tags are fully masked.
 // unknownPaths lists the TLV tags the active spec does not define.
-func maskValueForDiff(path, value string, unknownPaths map[string]bool) string {
+func maskValueForDiff(path, value string, unknownPaths map[string]bool, builtinSemantics bool) string {
 	if tag, ok := leafTag(path); ok {
-		if isSensitiveTLVTag(tag) || unknownPaths[path] {
+		// A known cardholder EMV tag is sensitive in any spec; an unknown tag is
+		// masked because its contents cannot be vouched for.
+		if unknownPaths[path] || isSensitiveTLVTag(tag) {
 			return maskAll(value)
 		}
 	}
-	id := topLevelID(path)
-	if path == id { // a top-level positional field
-		switch {
-		case panFieldIDs[id]:
-			return maskPAN(value)
-		case trackFieldIDs[id]:
-			return maskTrack(value)
-		case secretFieldIDs[id]:
-			return maskAll(value)
+	if builtinSemantics {
+		id := topLevelID(path)
+		if path == id { // a top-level positional field
+			switch {
+			case panFieldIDs[id]:
+				return maskPAN(value)
+			case trackFieldIDs[id]:
+				return maskTrack(value)
+			case secretFieldIDs[id]:
+				return maskAll(value)
+			}
 		}
 	}
-	if isContentScanPath(path) {
+	// Built-in: only the reserved/private free-form fields are content-scanned.
+	// Custom: every field is scanned, since the field-id rules do not apply.
+	if !builtinSemantics || isContentScanPath(path) {
 		return maskEmbeddedSensitive(value)
 	}
 	return value

@@ -75,7 +75,7 @@ func TestMaskCardholderFieldList(t *testing.T) {
 			"35": "4111111111111111D29122011234567890",
 		},
 	}
-	MaskCardholderData(&doc)
+	MaskCardholderData(&doc, true)
 	if doc.Fields["20"] != "840" {
 		t.Errorf("field 20 (country code) must not be masked, got %q", doc.Fields["20"])
 	}
@@ -100,7 +100,7 @@ func TestMaskBinaryRepresentation(t *testing.T) {
 			"63": "50414E3D34313131313131313131313131313131", // "PAN=4111111111111111"
 		},
 	}
-	MaskCardholderData(&doc)
+	MaskCardholderData(&doc, true)
 	if strings.Trim(doc.BinaryFields["2"], "*") != "" {
 		t.Errorf("binary PAN field 2 should be fully masked, got %q", doc.BinaryFields["2"])
 	}
@@ -123,7 +123,7 @@ func TestMaskSensitiveTLVTagAnyContainer(t *testing.T) {
 			"55.70.57": track,
 		},
 	}
-	MaskCardholderData(&doc)
+	MaskCardholderData(&doc, true)
 	for _, path := range []string{"55.9F6B", "127.57", "55.70.57"} {
 		if strings.Trim(doc.BinaryFields[path], "*") != "" {
 			t.Errorf("sensitive tag %s should be fully masked, got %q", path, doc.BinaryFields[path])
@@ -180,4 +180,63 @@ func TestDescribeDoesNotOverMaskSubfields(t *testing.T) {
 	if strings.Contains(res.Body, "48.2   B: **") {
 		t.Fatalf("subfield 48.2 must not be masked by the top-level PAN rule:\n%s", res.Body)
 	}
+}
+
+// TestMaskCustomSpecSemantics covers the custom-spec masking model: the BASE I
+// field-id and EMV-tag rules do not apply (so a harmless custom field 35/52 is
+// not masked), but content scanning still masks anything PAN- or track-shaped,
+// so a real PAN in any field never leaks.
+func TestMaskCustomSpecSemantics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("harmless custom fields are left intact", func(t *testing.T) {
+		t.Parallel()
+		doc := messageio.Document{
+			MTI: "0110",
+			Fields: map[string]string{
+				"35": "REF-ORDER-ABC-0001", // not track data under this custom spec
+				"52": "ABCDEFGH",           // not a PIN under this custom spec
+			},
+		}
+		MaskCardholderData(&doc, false)
+		if doc.Fields["35"] != "REF-ORDER-ABC-0001" {
+			t.Errorf("custom field 35 must not be masked, got %q", doc.Fields["35"])
+		}
+		if doc.Fields["52"] != "ABCDEFGH" {
+			t.Errorf("custom field 52 must not be masked, got %q", doc.Fields["52"])
+		}
+	})
+
+	t.Run("a real PAN is masked in any field", func(t *testing.T) {
+		t.Parallel()
+		doc := messageio.Document{
+			MTI: "0110",
+			Fields: map[string]string{
+				"2":  "4111111111111111",     // a Luhn-valid PAN
+				"35": "PAN=4111111111111111", // a labeled PAN
+			},
+		}
+		MaskCardholderData(&doc, false)
+		if strings.Contains(doc.Fields["2"], "4111111111111111") {
+			t.Errorf("a real PAN must be masked even under a custom spec, got %q", doc.Fields["2"])
+		}
+		if strings.Contains(doc.Fields["35"], "4111111111111111") {
+			t.Errorf("a labeled PAN must be masked even under a custom spec, got %q", doc.Fields["35"])
+		}
+	})
+
+	t.Run("built-in semantics still mask field 35 and 52", func(t *testing.T) {
+		t.Parallel()
+		doc := messageio.Document{
+			MTI:    "0110",
+			Fields: map[string]string{"35": "4111111111111111D2912", "52": "1234ABCD"},
+		}
+		MaskCardholderData(&doc, true)
+		if doc.Fields["35"] == "4111111111111111D2912" {
+			t.Errorf("built-in field 35 (track) must be masked")
+		}
+		if doc.Fields["52"] == "1234ABCD" {
+			t.Errorf("built-in field 52 (PIN) must be masked")
+		}
+	})
 }
