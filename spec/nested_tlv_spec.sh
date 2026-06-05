@@ -59,4 +59,16 @@ JSON
     The status should be success
     The output should include 'Field 55.70.9F02 changed'
   End
+
+  It 'keeps a top-level tag and a nested tag set on the same field'
+    # A message that mixes "55.82" (top-level) with "55.70.9F02" (constructed)
+    # must round-trip both; the flat tag previously overwrote the whole composite.
+    When run sh -c '
+      printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\"},\"binary_fields\":{\"55.82\":\"3900\",\"55.70.9F02\":\"000000005000\"}}" > "$1/mix.json" &&
+      "$ISO_BIN" convert "$1/mix.json" --to hex --spec "$1/spec.json" --output "$1/mix.hex" >/dev/null &&
+      "$ISO_BIN" convert "$1/mix.hex" --spec "$1/spec.json"' sh "$WORK"
+    The status should be success
+    The output should include '"55.82"'
+    The output should include '"55.70.9F02"'
+  End
 End

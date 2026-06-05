@@ -147,3 +147,62 @@ func TestNestedTLVExpandsToLeafPath(t *testing.T) {
 		t.Fatalf("nested TLV must not be flattened to 55.70: %#v", back.BinaryFields)
 	}
 }
+
+// TestMixedTopLevelAndNestedTLVRoundTrip guards the regression where a document
+// that set both a top-level TLV tag ("55.82") and a constructed one
+// ("55.70.9F02") dropped the nested side: the flat-tag blob overwrote the whole
+// composite instead of merging with the MarshalPath-set template.
+func TestMixedTopLevelAndNestedTLVRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	spec := loadSpecFile(t, "55-mixed.json", `{
+  "name": "Constructed TLV",
+  "fields": {
+    "0": {"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},
+    "1": {"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},
+    "11": {"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},
+    "55": {
+      "type":"Composite","length":999,"description":"ICC","prefix":"ASCII.LLL",
+      "tag":{"enc":"BerTLVTag","sort":"StringsByHex","skipUnknownTLVTags":true,"storeUnknownTLVTags":true},
+      "subfields": {
+        "70": {
+          "type":"Composite","length":255,"description":"Template","prefix":"BerTLV",
+          "tag":{"enc":"BerTLVTag","sort":"StringsByHex","skipUnknownTLVTags":true,"storeUnknownTLVTags":true},
+          "subfields": {
+            "9F02": {"type":"Binary","length":6,"description":"Amount","enc":"Binary","prefix":"BerTLV"},
+            "9F36": {"type":"Binary","length":2,"description":"ATC","enc":"Binary","prefix":"BerTLV"}
+          }
+        }
+      }
+    }
+  }
+}`)
+
+	doc := messageio.Document{
+		MTI:    "0110",
+		Fields: map[string]string{"11": "123456"},
+		BinaryFields: map[string]string{
+			"55.82":      "3900",
+			"55.70.9F02": "000000005000",
+			"55.70.9F36": "0034",
+		},
+	}
+	packed, err := WriteMessage(doc, spec)
+	if err != nil {
+		t.Fatalf("WriteMessage: %v", err)
+	}
+
+	back, err := MessageToDocument(spec, packed.Raw)
+	if err != nil {
+		t.Fatalf("MessageToDocument: %v", err)
+	}
+	for path, want := range map[string]string{
+		"55.82":      "3900",
+		"55.70.9F02": "000000005000",
+		"55.70.9F36": "0034",
+	} {
+		if got, ok := back.BinaryFields[path]; !ok || got != want {
+			t.Fatalf("round-trip lost %s: want %q, got %#v", path, want, back.BinaryFields)
+		}
+	}
+}
