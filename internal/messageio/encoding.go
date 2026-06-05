@@ -1,6 +1,7 @@
 package messageio
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -78,6 +79,7 @@ func ReadMessage(target, inline, encoding string, stdin io.Reader) ([]byte, erro
 // binary bitmap), so they fail this test — which makes it a reliable way to
 // auto-pick the input encoding when the caller does not know it.
 func LooksLikeHex(data []byte) bool {
+	data = bytes.TrimPrefix(data, utf8BOM)
 	n := 0
 	for _, b := range data {
 		switch b {
@@ -99,6 +101,10 @@ func isHexDigit(b byte) bool {
 func DecodeInput(data []byte, encoding string) ([]byte, error) {
 	switch strings.ToLower(strings.TrimSpace(encoding)) {
 	case "", "hex":
+		// An editor may save a hex fixture with a leading UTF-8 BOM; it is not a
+		// hex digit and must not poison the decode (the JSON path already strips
+		// it). Raw decoding is left untouched.
+		data = bytes.TrimPrefix(data, utf8BOM)
 		clean := strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
 				return -1
