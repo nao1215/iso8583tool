@@ -102,6 +102,12 @@ Describe 'iso8583tool convert'
       The status should be failure
       The stderr should include 'address field'
     End
+
+    It 'rejects raw bytes routed to a text field via binary_fields'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"11\":\"000102030405\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'text field'
+    End
   End
 
   Describe 'round-trip'

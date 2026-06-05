@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `convert` rejects raw bytes routed to an ASCII text field through
+  `binary_fields`. A field the spec models as ASCII text (for example the STAN
+  11, response code 39, terminal id 41, currency 49, or a free-form field like
+  48/63/100) must be set via `fields`; a `binary_fields` entry for it would
+  inject control/non-printable bytes that corrupt the summary and validation, so
+  it now fails with a clear message. Genuinely binary fields (the PIN 52, Binary,
+  Hex, Track, and BER-TLV composite fields) still accept `binary_fields`.
+
 - `validate --strict` now classifies all eight MTI functions and covers the
   remaining message classes, so a hollow message no longer passes silently. A
   notification (`0140`, `0240`, `0440`, ...) and instruction (`0160`, `0260`,

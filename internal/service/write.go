@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
+	"github.com/moov-io/iso8583/encoding"
 	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
@@ -74,6 +75,13 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		id, err := strconv.Atoi(path)
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("invalid binary field id %q", path)
+		}
+		// A text field (String/Numeric in the spec) carries human-readable data,
+		// so it must be set via "fields". Accepting raw bytes through
+		// "binary_fields" would inject control/non-printable bytes that corrupt
+		// the summary and validation, so reject it.
+		if isTextField(spec.Fields[id]) {
+			return WriteResult{}, fmt.Errorf("field %d is a text field; set it via \"fields\", not \"binary_fields\"", id)
 		}
 		if err := msg.BinaryField(id, data); err != nil {
 			return WriteResult{}, fmt.Errorf("set binary %s: %w", path, err)
@@ -146,6 +154,21 @@ func marshalPathError(label, path string, err error) error {
 		return fmt.Errorf("%s %s: field %s is a plain field in this spec and has no dot-path subfields; set field %s as a whole value instead", label, path, top, top)
 	}
 	return fmt.Errorf("%s %s: %w", label, path, err)
+}
+
+// isTextField reports whether the spec models a field as human-readable text: a
+// String or Numeric with ASCII encoding. Such a field must be set through
+// "fields"; routing raw bytes to it via "binary_fields" would inject
+// control/non-printable bytes. A String/Numeric with a binary-ish encoding (for
+// example the PIN field 52, a String with BytesToASCIIHex), and Binary, Hex,
+// Track, and Composite fields, legitimately carry bytes via "binary_fields".
+func isTextField(f field.Field) bool {
+	switch f.(type) {
+	case *field.String, *field.Numeric:
+		return f.Spec() != nil && f.Spec().Enc == encoding.ASCII
+	default:
+		return false
+	}
 }
 
 // splitTLVPath splits a flat TLV path such as "55.9F02" into its field id and
