@@ -79,9 +79,15 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 			Path:     path,
 			Message:  fmt.Sprintf("%s (input was %d bytes)", diag.Cause, diag.Bytes),
 		})
-		// A failed unpack is the classic "wrong spec" symptom, so point at the
-		// detector instead of leaving the user to guess.
-		report.Hint = "the message did not unpack under " + specLabel + "; run `iso8583tool doctor` to detect the right spec"
+		// A clean unpack failure is usually a wrong-spec symptom, so point at the
+		// detector. But when the message is too short to even hold its MTI or
+		// bitmap (or the library panicked on an overrun), no spec can rescue it —
+		// it is truncated or corrupt, and doctor will not help, so say that.
+		if diag.Malformed() {
+			report.Hint = "the message appears truncated or malformed (it is too short to hold its header/bitmap); re-capture the full message before retrying"
+		} else {
+			report.Hint = "the message did not unpack under " + specLabel + "; run `iso8583tool doctor` to detect the right spec"
+		}
 		report.Valid = false
 		return report
 	}

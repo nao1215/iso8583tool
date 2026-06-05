@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `doctor` no longer presents the default preset as the single answer when more
+  than one preset fits a message equally well. The ambiguous presets are listed
+  together (`--spec basei-starter or --spec spec87ascii`) with the
+  "confirm by eye" note.
+- `doctor` and `validate` now call out a truncated or corrupt capture instead of
+  steering the user to a custom spec or to `doctor` when neither can help. When a
+  message is too short to hold even its MTI/bitmap, `validate` reports it as
+  truncated/malformed, and `doctor` says so when every preset fails the same way.
+
 ### Changed
 
 - `view`, `validate`, `convert`, `diff`, and `redact` now default to

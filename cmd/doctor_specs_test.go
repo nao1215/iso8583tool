@@ -166,7 +166,10 @@ func TestDoctorJSONAndNoFit(t *testing.T) {
 func TestValidateFailureHintsDoctor(t *testing.T) {
 	t.Parallel()
 
-	code, out, _ := runApp("", "validate", "--raw", "01007220", "--no-color")
+	// A complete message that unpacks far enough to fail at a data field under the
+	// wrong spec is the case the doctor hint is for. (A header-level failure is
+	// reported as truncated/corrupt instead.)
+	code, out, _ := runApp("", "validate", "../examples/spec87ascii/0800-network-echo.hex", "--spec", "spec87bcd-starter", "--no-color")
 	if code != 1 {
 		t.Fatalf("validate should fail: %d", code)
 	}

@@ -774,14 +774,20 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 		encNote = fmt.Sprintf(" (%s input)", diag.InputEncoding)
 	}
 	writef(a.stdout, "%s inspected %d %s%s\n", pal.Dim("Doctor:"), diag.Bytes, unit, encNote)
-	if diag.Recommended == "" {
+	switch {
+	case diag.Recommended == "" && diag.LikelyMalformed:
+		writeLine(a.stdout, pal.Red("This message appears truncated or malformed."))
+		writeLine(a.stdout, pal.Dim("A field length runs past the available bytes under every preset; re-capture the full message. If the layout is custom, pass a moov-io/iso8583 JSON spec with --spec PATH."))
+	case diag.Recommended == "":
 		writeLine(a.stdout, pal.Red("No built-in preset could unpack this message."))
 		writeLine(a.stdout, pal.Dim("It may use a custom layout; pass a moov-io/iso8583 JSON spec with --spec PATH."))
-	} else {
+	case diag.Ambiguous:
+		// More than one preset fits equally well; present them all so the default
+		// is not mistaken for the single right answer.
+		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+strings.Join(diag.Recommendations, " or --spec ")))
+		writeLine(a.stdout, pal.Yellow("Note: more than one preset fits equally well; confirm by eye."))
+	default:
 		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+diag.Recommended))
-		if diag.Ambiguous {
-			writeLine(a.stdout, pal.Yellow("Note: more than one preset fits equally well; confirm by eye."))
-		}
 	}
 
 	writef(a.stdout, "\n%s\n", pal.BoldCyan("Candidates:"))

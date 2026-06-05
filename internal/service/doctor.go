@@ -39,10 +39,18 @@ type SpecDiagnosis struct {
 	// Recommended is the --spec value of the best-fitting preset, or empty when
 	// no preset could unpack the message.
 	Recommended string `json:"recommended,omitempty"`
+	// Recommendations lists every preset tied at the best score, in preset order.
+	// With one entry it equals Recommended; with more it is the ambiguous set the
+	// user must choose between.
+	Recommendations []string `json:"recommendations,omitempty"`
 	// Ambiguous reports that more than one preset fits about equally well, so the
 	// recommendation should be confirmed by eye.
-	Ambiguous  bool            `json:"ambiguous"`
-	Candidates []SpecCandidate `json:"candidates"`
+	Ambiguous bool `json:"ambiguous"`
+	// LikelyMalformed reports that no preset unpacked the message and every
+	// failure looks like truncation or corruption, so the input is probably
+	// damaged rather than a custom layout.
+	LikelyMalformed bool            `json:"likely_malformed,omitempty"`
+	Candidates      []SpecCandidate `json:"candidates"`
 }
 
 // BestScore returns the highest candidate score, or 0 when no preset fit. It
@@ -88,8 +96,32 @@ func DiagnoseSpec(raw []byte) SpecDiagnosis {
 		// plain-ASCII message fits both basei-starter and spec87ascii) are an
 		// ambiguous pair worth flagging.
 		diag.Ambiguous = tieScore == bestScore
+		for _, c := range diag.Candidates {
+			if c.Score == bestScore {
+				diag.Recommendations = append(diag.Recommendations, c.Preset)
+			}
+		}
+	} else {
+		// No preset unpacked the message. If every attempt failed because the
+		// message ran out of bytes (rather than decoding cleanly under the wrong
+		// spec), the capture is probably truncated or corrupt, not a custom layout.
+		diag.LikelyMalformed = allTruncated(diag.Candidates)
 	}
 	return diag
+}
+
+// allTruncated reports whether every candidate failed to unpack and each failure
+// looks like truncation or corruption.
+func allTruncated(candidates []SpecCandidate) bool {
+	if len(candidates) == 0 {
+		return false
+	}
+	for _, c := range candidates {
+		if c.Unpacks || !looksTruncated(c.Detail) {
+			return false
+		}
+	}
+	return true
 }
 
 // scorePreset attempts to unpack raw with one preset and turns the outcome into
