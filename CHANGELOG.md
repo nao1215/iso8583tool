@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same field — `02` and `2`, or the BER-TLV tags `55.9f02` and `55.9F02` — are
   rejected as duplicate aliases instead of letting one silently overwrite the
   other.
+- `convert` no longer drops nested BER-TLV data when a document sets both a
+  top-level tag and a constructed one on the same field. Previously a message
+  carrying `55.82` together with `55.70.9F02`/`55.70.9F36` packed only `55.82`;
+  the flat-tag blob overwrote the whole composite. The flat tags are now merged
+  into the composite's existing TLV stream, so every leaf path round-trips.
 
 ## [0.3.0] - 2026-06-05
 

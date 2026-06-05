@@ -85,7 +85,20 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("field %d: %w", id, err)
 		}
-		if err := msg.BinaryField(id, blob); err != nil {
+		// Nested paths such as "55.70.9F02" were already set on the composite via
+		// MarshalPath. Merge the flat tags into the composite's existing TLV stream
+		// rather than replacing it, so a message that mixes a top-level tag
+		// ("55.82") with a constructed one ("55.70.9F02") keeps both instead of
+		// dropping the nested side. GetBytes returns nil when nothing was set yet,
+		// so the flat-only case is unchanged.
+		existing, err := msg.GetBytes(id)
+		if err != nil {
+			return WriteResult{}, fmt.Errorf("field %d: %w", id, err)
+		}
+		merged := make([]byte, 0, len(existing)+len(blob))
+		merged = append(merged, existing...)
+		merged = append(merged, blob...)
+		if err := msg.BinaryField(id, merged); err != nil {
 			return WriteResult{}, fmt.Errorf("set field %d: %w", id, err)
 		}
 	}
