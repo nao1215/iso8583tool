@@ -552,9 +552,17 @@ func activeExtensions(fields map[int]field.Field, catalog basei.ExtensionCatalog
 	result := make([]basei.ExtensionField, 0, len(ids))
 	for _, id := range ids {
 		fieldDef, ok := catalog.Lookup(id)
-		if ok {
-			result = append(result, fieldDef)
+		if !ok {
+			continue
 		}
+		// When the active spec models this field as a TLV composite, report the
+		// tlv strategy instead of the catalog default, which assumes the built-in
+		// BASE I layout (for example field 127 as a nested bitmap). A custom spec
+		// that defines 127 as BER-TLV should not be described as a bitmap.
+		if _, isComposite := fields[id].(*field.Composite); isComposite {
+			fieldDef.Strategy = basei.StrategyTLV
+		}
+		result = append(result, fieldDef)
 	}
 	return result
 }
