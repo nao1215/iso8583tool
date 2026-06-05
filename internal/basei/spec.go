@@ -191,6 +191,14 @@ func buildSpec87BCDStarter() *iso8583.MessageSpec {
 		11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
 		21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
 		31, 49, 50, 51, 53, 70,
+		// Secondary-bitmap numeric fields — settlement/payment/country codes,
+		// message numbers, the date-action field, the count and amount fields, the
+		// original/replacement amounts, and the net settlement amount — are packed
+		// BCD in a packed-BCD capture, like the primary numeric fields.
+		66, 67, 68, 69, 71, 72, 73,
+		74, 75, 76, 77, 78, 79, 80, 81,
+		82, 83, 84, 85, 86, 87, 88, 89, 90,
+		93, 94, 95, 97,
 	} {
 		fields[id] = cloneWithEncoding(fields[id], encoding.BCD, prefix.BCD.Fixed)
 	}
@@ -210,6 +218,12 @@ func buildSpec87BCDStarter() *iso8583.MessageSpec {
 		if bcdPref := bcdLengthPrefix(s.Pref); bcdPref != nil {
 			fields[id] = cloneWithEncoding(f, s.Enc, bcdPref)
 		}
+	}
+
+	// Fields 99 and 100 are numeric institution-identification codes, so their
+	// payload is BCD too, not only the length prefix the loop above set.
+	for _, id := range []int{99, 100} {
+		fields[id] = cloneWithEncoding(fields[id], encoding.BCD, prefix.BCD.LL)
 	}
 
 	// PIN data (52) and the MAC (64) are raw secret bytes, not ASCII-hex text, so
