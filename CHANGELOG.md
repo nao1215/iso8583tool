@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The built-in presets now define the standard ISO 8583:1987 secondary-bitmap
+  fields (66-128). A document that uses common high-numbered fields — for example
+  95 (replacement amounts), 96 (message security code), 100 (receiving
+  institution id), 102-104 (account ids / transaction description), or the
+  reserved range 123-128 — now packs and round-trips instead of failing with
+  "field N is not defined in the spec". The fields the default extension catalog
+  documents (including 126 and 127) are now backed by a definition in every
+  built-in preset.
+
 ### Fixed
 
 - The bundled `examples/spec87ascii/0800-network-echo` sample now carries the

@@ -39,17 +39,116 @@ func buildStarterMessageSpec() *iso8583.MessageSpec {
 
 func buildSpec87ASCIIWithSecondaryFields() *iso8583.MessageSpec {
 	fields := maps.Clone(moovspecs.Spec87ASCII.Fields)
-	fields[70] = field.NewString(&field.Spec{
-		Length:      3,
-		Description: "Network Management Information Code",
-		Enc:         encoding.ASCII,
-		Pref:        prefix.ASCII.Fixed,
-	})
+
+	// moov's Spec87ASCII stops at field 64 (plus 90). Add the standard ISO
+	// 8583:1987 secondary-bitmap fields (65-128) so a message that uses them
+	// packs instead of failing with "field N is not defined in the spec". Field
+	// 65 is the extended-bitmap indicator, handled by the bitmap, so it is not a
+	// data field here. Fields 90 is already defined by moov.
+	for id, f := range secondaryBitmapFields() {
+		fields[id] = f
+	}
 
 	return &iso8583.MessageSpec{
 		Name:   "ISO 8583:1987 ASCII",
 		Fields: fields,
 	}
+}
+
+// secondaryBitmapFields returns the standard ISO 8583:1987 fields 66-128
+// (excluding 90, which moov already defines). Fixed numeric/alphanumeric fields
+// use an ASCII fixed prefix; the variable trailing fields use ASCII LL/LLL; the
+// two message-security/MAC fields are fixed binary like field 64.
+func secondaryBitmapFields() map[int]field.Field {
+	f := map[int]field.Field{
+		66:  asciiFixed("Settlement Code", 1),
+		67:  asciiFixed("Extended Payment Code", 2),
+		68:  asciiFixed("Receiving Institution Country Code", 3),
+		69:  asciiFixed("Settlement Institution Country Code", 3),
+		70:  asciiFixed("Network Management Information Code", 3),
+		71:  asciiFixed("Message Number", 4),
+		72:  asciiFixed("Message Number Last", 4),
+		73:  asciiFixed("Date, Action", 6),
+		74:  asciiFixed("Credits, Number", 10),
+		75:  asciiFixed("Credits, Reversal Number", 10),
+		76:  asciiFixed("Debits, Number", 10),
+		77:  asciiFixed("Debits, Reversal Number", 10),
+		78:  asciiFixed("Transfer, Number", 10),
+		79:  asciiFixed("Transfer, Reversal Number", 10),
+		80:  asciiFixed("Inquiries, Number", 10),
+		81:  asciiFixed("Authorizations, Number", 10),
+		82:  asciiFixed("Credits, Processing Fee Amount", 12),
+		83:  asciiFixed("Credits, Transaction Fee Amount", 12),
+		84:  asciiFixed("Debits, Processing Fee Amount", 12),
+		85:  asciiFixed("Debits, Transaction Fee Amount", 12),
+		86:  asciiFixed("Credits, Amount", 16),
+		87:  asciiFixed("Credits, Reversal Amount", 16),
+		88:  asciiFixed("Debits, Amount", 16),
+		89:  asciiFixed("Debits, Reversal Amount", 16),
+		91:  asciiFixed("File Update Code", 1),
+		92:  asciiFixed("File Security Code", 2),
+		93:  asciiFixed("Response Indicator", 5),
+		94:  asciiFixed("Service Indicator", 7),
+		95:  asciiFixed("Replacement Amounts", 42),
+		96:  binaryFixed("Message Security Code", 8),
+		97:  asciiFixed("Amount, Net Settlement", 17),
+		98:  asciiFixed("Payee", 25),
+		99:  asciiVar("Settlement Institution Identification Code", 11, prefix.ASCII.LL),
+		100: asciiVar("Receiving Institution Identification Code", 11, prefix.ASCII.LL),
+		101: asciiVar("File Name", 17, prefix.ASCII.LL),
+		102: asciiVar("Account Identification 1", 28, prefix.ASCII.LL),
+		103: asciiVar("Account Identification 2", 28, prefix.ASCII.LL),
+		104: asciiVar("Transaction Description", 100, prefix.ASCII.LLL),
+		128: binaryFixed("Message Authentication Code (MAC)", 8),
+	}
+	// 105-127 are reserved (ISO / national / private) variable-length fields.
+	for id := 105; id <= 127; id++ {
+		f[id] = asciiVar(reservedFieldName(id), 999, prefix.ASCII.LLL)
+	}
+	return f
+}
+
+// reservedFieldName labels the reserved ranges of the 1987 layout.
+func reservedFieldName(id int) string {
+	switch {
+	case id <= 111:
+		return "Reserved for ISO Use"
+	case id <= 119:
+		return "Reserved for National Use"
+	default:
+		return "Reserved for Private Use"
+	}
+}
+
+// asciiFixed builds a fixed-length ASCII field.
+func asciiFixed(description string, length int) field.Field {
+	return field.NewString(&field.Spec{
+		Length:      length,
+		Description: description,
+		Enc:         encoding.ASCII,
+		Pref:        prefix.ASCII.Fixed,
+	})
+}
+
+// asciiVar builds a variable-length ASCII field with the given length prefix.
+func asciiVar(description string, length int, pref prefix.Prefixer) field.Field {
+	return field.NewString(&field.Spec{
+		Length:      length,
+		Description: description,
+		Enc:         encoding.ASCII,
+		Pref:        pref,
+	})
+}
+
+// binaryFixed builds a fixed-length raw binary field, used for secret fields
+// (such as the MAC in field 128) that a document carries via binary_fields.
+func binaryFixed(description string, length int) field.Field {
+	return field.NewBinary(&field.Spec{
+		Length:      length,
+		Description: description,
+		Enc:         encoding.Binary,
+		Pref:        prefix.Binary.Fixed,
+	})
 }
 
 func buildSpec87BCDStarter() *iso8583.MessageSpec {
