@@ -27,6 +27,13 @@ linters:
     - unparam
     - unused
     - whitespace
+  settings:
+    gosec:
+      excludes:
+        # G703 (path traversal via taint analysis) flags writes to the user-supplied
+        # --output path, which is the intended behavior of this CLI. The rule is also
+        # unstable across Go toolchain versions, so exclude it project-wide.
+        - G703
   exclusions:
     generated: lax
     rules:
