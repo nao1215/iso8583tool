@@ -28,9 +28,20 @@ Describe 'iso8583tool masking under custom specs'
     The output should not include '50414E3D'
   End
 
-  It 'masks a known 9F6B track2-equivalent tag in view and redact' # bugs 31, 32
+  build_9f6b() {
     build '{"name":"9F6B","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"55":{"type":"Composite","length":999,"description":"ICC","prefix":"ASCII.LLL","tag":{"enc":"BerTLVTag","sort":"StringsByHex","skipUnknownTLVTags":true,"storeUnknownTLVTags":true},"subfields":{"9F6B":{"type":"Binary","length":19,"description":"Track 2 Equivalent","enc":"Binary","prefix":"BerTLV"}}}}}' \
       '{"mti":"0110","fields":{"11":"123456"},"binary_fields":{"55.9F6B":"4111111111111111D29122011234567890"}}'
+  }
+
+  It 'masks a known 9F6B track2-equivalent tag in view' # bug 31
+    build_9f6b
+    When run iso8583tool view "$WORK/m.hex" --spec "$WORK/spec.json" --format json
+    The status should be success
+    The output should not include '4111111111111111'
+  End
+
+  It 'masks a known 9F6B track2-equivalent tag in redact' # bug 32
+    build_9f6b
     When run iso8583tool redact "$WORK/m.hex" --spec "$WORK/spec.json" --format json
     The status should be success
     The output should not include '4111111111111111'

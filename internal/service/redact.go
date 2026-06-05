@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/moov-io/iso8583"
+	"github.com/moov-io/iso8583/encoding"
 	"github.com/moov-io/iso8583/field"
 
 	"github.com/nao1215/iso8583tool/internal/messageio"
@@ -188,9 +189,20 @@ func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
 	}
 	// Sensitive EMV/TLV tags are masked by their tag key, so a tag is covered
 	// wherever it nests (55.57, 127.57, 55.70.57) because describe applies the
-	// same filter map to every composite level.
+	// same filter map to every composite level. moov keys filters by bare id, so
+	// a decimal EMV tag (56/57/99) would also match the same-numbered top-level
+	// ISO field (which is a plain ASCII reserved/settlement field, not cardholder
+	// data); guard with the binary encoding EMV tags carry to avoid that.
+	emvMask := func(in string, f field.Field) string {
+		if f != nil {
+			if s := f.Spec(); s != nil && s.Enc == encoding.Binary {
+				return maskAll(in)
+			}
+		}
+		return in
+	}
 	for _, tag := range cardholderEMVTags {
-		filters = append(filters, iso8583.FilterField(tag, mask(maskAll)))
+		filters = append(filters, iso8583.FilterField(tag, emvMask))
 	}
 	// Content-scan the free-form / private fields so an embedded PAN does not leak
 	// through the text view.
@@ -320,8 +332,24 @@ func RedactMessage(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, [
 	}
 	masked = append(masked, maskUnknownInDocument(&doc, collectUnknownTags(msg))...)
 
-	sort.Strings(masked)
-	return doc, masked, nil
+	// The cryptogram and unknown-tag passes can re-list a path already returned by
+	// MaskCardholderData, so deduplicate before returning the sorted list.
+	return doc, sortedUnique(masked), nil
+}
+
+// sortedUnique returns the unique values of paths, sorted.
+func sortedUnique(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := paths[:0]
+	for _, p := range paths {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // maskUnknownTagValues returns copies of the unknown tags with their raw values
