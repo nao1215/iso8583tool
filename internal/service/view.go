@@ -81,7 +81,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	switch format {
 	case "", "describe", "text":
 		var buf bytes.Buffer
-		describeFilters := safeDescribeFilters()
+		describeFilters := safeDescribeFilters(msg)
 		if unsafe {
 			describeFilters = iso8583.DoNotFilterFields()
 		}
@@ -389,6 +389,7 @@ func DecodeFields(msg *iso8583.Message) []DecodedField {
 		if err != nil {
 			continue
 		}
+		value = canonicalFieldValue(f, value)
 		if meaning, ok := annotate.FieldMeaning(path, value); ok {
 			decoded = append(decoded, DecodedField{Path: path, Value: value, Meaning: meaning})
 		}
@@ -409,6 +410,7 @@ func decodeSubfields(parent string, subfields map[string]field.Field) []DecodedF
 		if err != nil {
 			continue
 		}
+		value = canonicalFieldValue(subfields[tag], value)
 		path := parent + "." + tag
 		if meaning, ok := annotate.FieldMeaning(path, value); ok {
 			decoded = append(decoded, DecodedField{Path: path, Value: value, Meaning: meaning})
