@@ -212,36 +212,23 @@ packing it would be order-dependent and silently lossy.
 
 ## `send`
 
-Sends a single ISO 8583 message to a host over TCP and decodes the one response
-that comes back. It opens one connection, writes one framed request, reads one
-framed response, and reports the timing — there is no listener, session, retry,
-or sign-on logic, so it is a focused probe for a test endpoint or a simulator,
-not a switch.
+Sends one ISO 8583 message to a host over TCP and decodes the one response. It
+is a focused probe for a test endpoint or simulator, with no listener, session,
+retry, or sign-on logic.
 
 ![send](./docs/demo-send.gif)
 
-The input is the same as the other commands: a JSON document (packed with the
-active spec before it goes on the wire), or an already-packed hex/raw message
-(sent verbatim). It is read from a file, `-`, or stdin, or given inline with
-`--raw`.
+The input is a JSON document (packed with the active spec) or an already-packed
+hex/raw message, read from a file, `-`, stdin, or `--raw`.
 
-**Framing.** ISO 8583 over TCP needs a length header so the peer knows where a
-message ends. `--framing` selects the convention, and the same one is used for
-both the request and the response:
+`--framing` selects the length header, used for both request and response:
 
 - `2byte-binary` (default) — a 2-byte big-endian length prefix.
 - `4digit-ascii` — a 4-digit ASCII length header (`0094…`).
-- `none` — no header; the response is read until the peer closes the connection
-  or `--timeout` is reached.
+- `none` — no header; the response is read until EOF or `--timeout`.
 
-`--timeout` (default `5s`) bounds the connect and the read, so a host that never
-answers fails with a clear error and a non-zero exit instead of hanging.
-
-**Masking.** The request and response are displayed with the same safe defaults
-as [`view`](#view): the PAN, track, PIN, the EMV tags that carry them, and a PAN
-embedded in a free-form private field are masked. Pass `--unsafe` to show raw
-values for local fault analysis. Unlike `convert`, `send` never reveals
-cardholder data by default.
+`--timeout` (default `5s`) bounds the connect and read. The request and response
+are masked by default like [`view`](#view); `--unsafe` shows raw values.
 
 ```shell
 # Send a packed 0800 network echo and decode the 0810 reply (default framing).
