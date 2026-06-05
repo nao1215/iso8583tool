@@ -73,9 +73,69 @@ func buildSpec87BCDStarter() *iso8583.MessageSpec {
 		fields[id] = cloneWithEncoding(fields[id], encoding.BCD, prefix.BCD.Fixed)
 	}
 
+	// Variable-length fields keep their ASCII length prefix in moov's spec87ascii;
+	// in a packed-BCD capture the length bytes are BCD, so a "06"-long field is a
+	// single 0x06 byte rather than the ASCII pair 0x30 0x36. Re-prefix every
+	// remaining variable-length field so its wire length matches the preset name.
+	for id, f := range fields {
+		if _, ok := f.(*field.Composite); ok {
+			continue
+		}
+		s := f.Spec()
+		if s == nil || s.Pref == nil {
+			continue
+		}
+		if bcdPref := bcdLengthPrefix(s.Pref); bcdPref != nil {
+			fields[id] = cloneWithEncoding(f, s.Enc, bcdPref)
+		}
+	}
+
+	// PIN data (52) and the MAC (64) are raw secret bytes, not ASCII-hex text, so
+	// a raw-binary capture carries them as fixed-length binary.
+	fields[52] = rawBinaryField(fields[52], 8, "PIN Data")
+	fields[64] = rawBinaryField(fields[64], 8, "Message Authentication Code (MAC)")
+
+	// Field 55 is EMV BER-TLV (like the BASE I starter) so 55.<tag> packs and
+	// round-trips; its outer length prefix is BCD to match the packed layout.
+	emv := field55Spec()
+	emv.Pref = prefix.BCD.LLL
+	fields[55] = field.NewComposite(emv)
+
 	return &iso8583.MessageSpec{
 		Name:   "ISO 8583:1987 Packed BCD Starter",
 		Fields: fields,
+	}
+}
+
+// rawBinaryField returns a fixed-length binary field of the given byte length,
+// used for raw secret fields (PIN, MAC) in the packed-BCD preset.
+func rawBinaryField(src field.Field, length int, description string) field.Field {
+	if src != nil && src.Spec() != nil && description == "" {
+		description = src.Spec().Description
+	}
+	return field.NewBinary(&field.Spec{
+		Length:      length,
+		Description: description,
+		Enc:         encoding.Binary,
+		Pref:        prefix.Binary.Fixed,
+	})
+}
+
+// bcdLengthPrefix maps an ASCII variable-length prefix to its BCD equivalent,
+// returning nil for fixed-length or already-binary prefixes (which are left as
+// they are).
+func bcdLengthPrefix(p prefix.Prefixer) prefix.Prefixer {
+	switch p.Inspect() {
+	case "ASCII.L":
+		return prefix.BCD.L
+	case "ASCII.LL":
+		return prefix.BCD.LL
+	case "ASCII.LLL":
+		return prefix.BCD.LLL
+	case "ASCII.LLLL":
+		return prefix.BCD.LLLL
+	default:
+		return nil
 	}
 }
 

@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A composite `tag` block that omits `sort` now loads instead of failing with
   "unknown sort function"; an omitted sort defaults to hex-tag order, which
   suits the BER-TLV composites these specs describe.
+- The `spec87bcd-starter` preset now matches its packed-BCD intent. Field 55 is
+  an EMV BER-TLV composite, so `55.<tag>` packs and round-trips instead of
+  failing with "field 55 is not a PathMarshaler". The PIN (52) and MAC (64)
+  fields are raw fixed-length binary, so they no longer fail to encode their
+  length. Variable-length fields (for example 32, 35, 36, 45) encode their
+  length prefix as BCD rather than ASCII, so a packed-BCD capture no longer
+  carries an ASCII length pair such as `0x30 0x36` for a six-long field.
 
 ## [0.2.2] - 2026-06-05
 
