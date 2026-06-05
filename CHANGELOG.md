@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-05
+
+This release fixes a broad set of correctness, ergonomics, and safety issues
+found while exercising the CLI, and rounds out the built-in specs.
+
 ### Added
 
 - The built-in presets now define the standard ISO 8583:1987 secondary-bitmap
@@ -14,58 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   95 (replacement amounts), 96 (message security code), 100 (receiving
   institution id), 102-104 (account ids / transaction description), or the
   reserved range 123-128 — now packs and round-trips instead of failing with
-  "field N is not defined in the spec". The fields the default extension catalog
-  documents (including 126 and 127) are now backed by a definition in every
-  built-in preset.
-
-### Fixed
-
-- The bundled `examples/spec87ascii/0800-network-echo` sample now carries the
-  network-management code in field 70, so it passes `validate --strict` under its
-  intended `spec87ascii` preset instead of failing for a missing field 70.
-
-- Help requested on the success path now prints to stdout instead of stderr:
-  `--help`, `help <command>`, `<command> --help`, and the no-argument overview.
-  Error-path usage (an unknown command, a bad flag, or trailing arguments) still
-  goes to stderr with a non-zero exit, matching common CLI convention.
-
-- Sensitive-data masking now covers cases it previously missed, across `view`,
-  `redact`, and `diff`:
-  - A PAN or track carried in a binary (hex-encoded) field — for example a
-    binary field 2, field 35, or a private field 63 holding `PAN=...` bytes — is
-    now masked, not only the text representation.
-  - Sensitive EMV/TLV tags (`5A`, `56`, `57`, `99`, `9F1F`, `9F20`, and now
-    `9F6B` Track 2 Equivalent Data) are masked in any TLV container (`55`, `127`,
-    …) and at any nesting depth (`55.70.57`), whether or not the active spec
-    defines the tag.
-  - Free-form additional-data fields (for example 44 and 54) are content-scanned
-    for an embedded PAN, and embedded PANs written with space or hyphen grouping
-    (`4111 1111 1111 1111`, `4111-1111-...`) are masked.
-  - Field 34 (Extended PAN) is masked; field 20 is no longer masked (in the 1987
-    layout it is the PAN Extended Country Code, not a secondary PAN), so its real
-    value shows in `view`, `redact`, and `diff`.
-  - The embedded-PAN scanner no longer masks plain numeric identifiers: a
-    candidate is masked only when its digits pass the Luhn check or it follows a
-    PAN-ish key label, so `ORDER_ID=1234567890123` is left intact.
-- `view` reports a field's extension strategy as `tlv` when the active spec
-  models it as a BER-TLV composite, instead of the built-in catalog default
-  (which described, for example, field 127 as a nested bitmap).
-
-- A constructed (nested) BER-TLV tag — a TLV tag whose value is itself a TLV
-  template — now expands to its leaf dot-path (for example `55.70.9F02`) when a
-  message is unpacked. It previously collapsed into the parent tag's raw blob
-  (`55.70`), so `convert` lost the child path, `view --filter 55.70.9F02`
-  reported it as `<not present>`, and `diff` reported the change against the
-  parent blob. `view --filter` and `diff` now resolve the leaf path too.
-
-- `doctor` no longer presents the default preset as the single answer when more
-  than one preset fits a message equally well. The ambiguous presets are listed
-  together (`--spec basei-starter or --spec spec87ascii`) with the
-  "confirm by eye" note.
-- `doctor` and `validate` now call out a truncated or corrupt capture instead of
-  steering the user to a custom spec or to `doctor` when neither can help. When a
-  message is too short to hold even its MTI/bitmap, `validate` reports it as
-  truncated/malformed, and `doctor` says so when every preset fails the same way.
+  "field N is not defined in the spec". Every field the default extension catalog
+  documents (including 126 and 127) is now backed by a definition.
 
 ### Changed
 
@@ -77,54 +32,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `convert --output` now reports the top-level ISO field count in its
-  `packed N fields` summary, matching the `field_count` `doctor` reports for the
-  same message. It previously counted every TLV subtag (for example each
-  `55.<tag>`) as a separate field, so the summary disagreed with `doctor`.
-
-- `validate --strict` now checks advice and network-management messages that
-  previously passed with only a STAN. An authorization/financial advice (`0120`,
-  `0220`) is held to the same core requirements as the request it stands in for
-  (processing code, amount, transmission date/time, and a PAN source), and every
-  network-management message (`0810`, `0820`, `0830`, in addition to `0800`)
-  requires the network-management code in field 70.
-
-- `view --filter` and `diff --filter` now match EMV tag paths case-insensitively,
-  so `55.9f02` and `55.9F02` select the same field instead of one of them
-  reporting `<not present>` or `No differences.`.
-- `diff --filter 0` now selects the MTI, matching `view` and `diff --filter mti`.
-- `diff` now reports a filter that matched no field in either message (in text as
-  `No field matched filter: ...` and in JSON as `missing_filters`), so a typo is
-  distinguishable from a real no-change result.
-
-- `convert` now tolerates a UTF-8 BOM (`EF BB BF`) at the start of a JSON
-  document. Auto-detection no longer mistakes a BOM-prefixed object for hex, and
-  an explicit `--to hex` no longer fails JSON parsing on the BOM. Editors and
-  some exporters prepend the BOM even though it is not valid JSON.
-
-- Zero-padded fixed-length fields now show their canonical width consistently
-  across every surface. The full `view` describe output and the `decoded[].value`
-  entries (in both `view --format json` and `validate --format json`) previously
-  used the collapsed integer form (`F3: 0`, `value: "0"`) while the filtered and
-  JSON `fields` views showed the padded form (`000000`). All of them now report
-  the canonical, edit-ready value.
-
 - A custom moov-io/iso8583 JSON spec passed with `--spec PATH` now loads the
   `Hex`, `Track1`, `Track3`, and `IndexTag` field types, both at the top level
-  and inside composite subfields. Previously these failed with a "no constructor
-  for field type" error even though moov-io exports the field types, because the
-  upstream JSON importer does not register them. `IndexTag` is read as a
-  positional string subfield (moov-io has no field type backing that name).
-- A composite `tag` block that omits `sort` now loads instead of failing with
-  "unknown sort function"; an omitted sort defaults to hex-tag order, which
-  suits the BER-TLV composites these specs describe.
-- The `spec87bcd-starter` preset now matches its packed-BCD intent. Field 55 is
-  an EMV BER-TLV composite, so `55.<tag>` packs and round-trips instead of
-  failing with "field 55 is not a PathMarshaler". The PIN (52) and MAC (64)
-  fields are raw fixed-length binary, so they no longer fail to encode their
-  length. Variable-length fields (for example 32, 35, 36, 45) encode their
-  length prefix as BCD rather than ASCII, so a packed-BCD capture no longer
-  carries an ASCII length pair such as `0x30 0x36` for a six-long field.
+  and inside composite subfields, and a composite `tag` block that omits `sort`
+  now loads (defaulting to hex-tag order) instead of failing with a
+  "no constructor for field type" or "unknown sort function" error. `IndexTag` is
+  read as a positional string subfield (moov-io has no field type for that name).
+- The `spec87bcd-starter` preset now matches its packed-BCD intent: field 55 is
+  an EMV BER-TLV composite so `55.<tag>` packs and round-trips, the PIN (52) and
+  MAC (64) fields are raw fixed-length binary, and variable-length fields encode
+  their length prefix as BCD rather than ASCII.
+- Zero-padded fixed-length fields show their canonical width consistently across
+  every surface: the full `view` describe output and the `decoded[].value`
+  entries (in `view --format json` and `validate --format json`) no longer
+  collapse `000000` to `0`.
+- `convert` tolerates a UTF-8 BOM (`EF BB BF`) at the start of a JSON document,
+  both when auto-detecting the direction and with an explicit `--to hex`.
+- `view --filter` and `diff --filter` match EMV tag paths case-insensitively
+  (`55.9f02` = `55.9F02`), `diff --filter 0` selects the MTI like `view`, and
+  `diff` reports a filter that matched nothing (text `No field matched filter:`,
+  JSON `missing_filters`) so a typo is distinguishable from a real no-change
+  result.
+- `validate --strict` now checks advice and network-management messages that
+  previously passed with only a STAN: an authorization/financial advice (`0120`,
+  `0220`) is held to the same core requirements as its request, and every
+  network-management message (`0810`, `0820`, `0830`, in addition to `0800`)
+  requires the network-management code in field 70.
+- `convert --output` reports the top-level ISO field count in its
+  `packed N fields` summary, matching the `field_count` `doctor` reports, instead
+  of counting every TLV subtag separately.
+- `doctor` lists all presets tied at the best score rather than presenting the
+  default as the single answer, and both `doctor` and `validate` call out a
+  truncated or corrupt capture (too short to hold its MTI/bitmap) instead of
+  steering the user to a custom spec or to `doctor` when neither can help.
+- Constructed (nested) BER-TLV tags expand to their leaf dot-path (for example
+  `55.70.9F02`) on unpack, so `convert`, `view --filter`, and `diff` resolve and
+  compare the leaf tag instead of the parent tag's raw blob.
+- Sensitive-data masking covers cases it previously missed, across `view`,
+  `redact`, and `diff`:
+  - A PAN or track carried in a binary (hex-encoded) field is masked, not only
+    the text representation.
+  - Sensitive EMV/TLV tags (`5A`, `56`, `57`, `99`, `9F1F`, `9F20`, and `9F6B`)
+    are masked in any TLV container and at any nesting depth, known or unknown.
+  - Free-form additional-data fields (for example 44 and 54) are content-scanned,
+    and separator-grouped PANs (`4111 1111 ...`, `4111-1111-...`) are masked.
+  - Field 34 (Extended PAN) is masked; field 20 (PAN Extended Country Code) is
+    no longer masked.
+  - The embedded-PAN scanner masks only Luhn-valid or PAN-key-labeled candidates,
+    so a plain business identifier is left intact.
+  - `view` reports a field's extension strategy as `tlv` when the active spec
+    models it as a BER-TLV composite.
+- Help requested on the success path (`--help`, `help <command>`,
+  `<command> --help`, and the no-argument overview) prints to stdout; error-path
+  usage still goes to stderr with a non-zero exit.
+- The bundled `examples/spec87ascii/0800-network-echo` sample carries field 70,
+  so it passes `validate --strict` under its intended `spec87ascii` preset.
 
 ## [0.2.2] - 2026-06-05
 
