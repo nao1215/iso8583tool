@@ -42,7 +42,10 @@ func TestFieldMeaning(t *testing.T) {
 		{"70", "301", "Echo test"},                     // network management code
 		{"55.9C", "00", "Purchase / goods & services"}, // EMV transaction type
 		{"55.9F27", "80", "ARQC (online authorization requested)"},
-		{"55.8A", "3030", "Approved"}, // ARC = ASCII "00"
+		{"55.8A", "3030", "Approved"},                // ARC = ASCII "00"
+		{"55.70.8A", "3030", "Approved"},             // ARC nested inside a constructed template
+		{"55.70.9A", "260605", "2026-06-05"},         // EMV date nested inside a template
+		{"55.77.5F2A", "0392", "JPY (Japanese yen)"}, // currency, two templates deep
 	}
 	for _, c := range cases {
 		got, ok := FieldMeaning(c.path, c.value)
@@ -59,6 +62,21 @@ func TestFieldMeaning(t *testing.T) {
 	}
 	if _, ok := FieldMeaning("11", "123456"); ok {
 		t.Error("FieldMeaning for a non-coded field should not match")
+	}
+}
+
+func TestNormalizeFieldPath(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ in, want string }{
+		{"39", "39"},
+		{"55.8A", "55.8A"},
+		{"55.70.8A", "55.8A"},
+		{"55.70.77.9A", "55.9A"},
+	}
+	for _, c := range cases {
+		if got := normalizeFieldPath(c.in); got != c.want {
+			t.Errorf("normalizeFieldPath(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 

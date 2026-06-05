@@ -71,4 +71,13 @@ JSON
     The output should include '"55.82"'
     The output should include '"55.70.9F02"'
   End
+
+  It 'shows the full nested path in the describe output'
+    # The full describe view must keep the parent path of a constructed TLV: the
+    # nested header as F55.70 and the leaf as 55.70.9F02, not F70 / 70.9F02.
+    When run iso8583tool view "$WORK/a.hex" --spec "$WORK/spec.json" --no-color
+    The status should be success
+    The output should include 'F55.70'
+    The output should include '55.70.9F02'
+  End
 End

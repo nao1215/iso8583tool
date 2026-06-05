@@ -68,6 +68,12 @@ func FieldMeaning(path, value string) (string, bool) {
 		return "", false
 	}
 
+	// A constructed TLV tag carries the same meaning at any nesting depth: an
+	// 8A (ARC) under 55.70 means what an 8A directly under 55 means. Collapse the
+	// nested path to its container+leaf form ("55.70.8A" -> "55.8A") so the table
+	// below, and the helpers it calls, key off the leaf tag, not the template.
+	path = normalizeFieldPath(path)
+
 	switch path {
 	case "3": // processing code (6 digits; moov may strip leading zeros)
 		return transactionType(leftPad(value, 6))
@@ -107,6 +113,17 @@ func FieldMeaning(path, value string) (string, bool) {
 		return formatStamp(value, "20YY-MM-DD", []int{2, 2, 2})
 	}
 	return "", false
+}
+
+// normalizeFieldPath collapses a nested TLV path to the container+leaf form the
+// meaning table is keyed by, so "55.70.8A" is treated like "55.8A". A top-level
+// path ("39") or a single-level path ("55.8A") is returned unchanged.
+func normalizeFieldPath(path string) string {
+	parts := strings.Split(path, ".")
+	if len(parts) <= 2 {
+		return path
+	}
+	return parts[0] + "." + parts[len(parts)-1]
 }
 
 // formatStamp renders a fixed-width numeric date/time by slicing the value into
