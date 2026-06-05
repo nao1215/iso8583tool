@@ -1000,3 +1000,25 @@ func kanmuLikeRaw(t *testing.T) []byte {
 	}
 	return raw
 }
+
+// TestValidateNoEmptyDecodedSection guards that the "Decoded Fields:" heading is
+// not printed when only the MTI was decoded (it is shown separately), so a
+// hollow message's report is not padded with an empty section.
+func TestValidateNoEmptyDecodedSection(t *testing.T) {
+	t.Parallel()
+
+	hexOut := filepath.Join(t.TempDir(), "0500.hex")
+	if code, _, errOut := runApp(`{"mti":"0500","fields":{"11":"123456"}}`, "convert", "--to", "hex", "--output", hexOut); code != 0 {
+		t.Fatalf("convert failed: %s", errOut)
+	}
+	_, out, _ := runApp("", "validate", hexOut, "--no-color")
+	if strings.Contains(out, "Decoded Fields:") {
+		t.Errorf("a report whose only decoded entry is the MTI must not print an empty Decoded Fields section:\n%s", out)
+	}
+
+	// A message with coded fields still shows the section.
+	_, out2, _ := runApp("", "validate", example("0110-auth-response.hex"), "--no-color")
+	if !strings.Contains(out2, "Decoded Fields:") {
+		t.Errorf("a message with decoded fields should still show the section:\n%s", out2)
+	}
+}

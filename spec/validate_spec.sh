@@ -49,4 +49,12 @@ Describe 'iso8583tool validate'
     The output should include 'Validation: failed'
     The output should include '39'
   End
+
+  It 'omits the Decoded Fields heading when only the MTI decoded'
+    # A message whose only decoded entry is the MTI must not print an empty
+    # "Decoded Fields:" section (the MTI is shown on its own line above).
+    When run sh -c 'printf "%s" "{\"mti\":\"0500\",\"fields\":{\"11\":\"123456\"}}" | "$ISO_BIN" convert --to hex | "$ISO_BIN" validate - --strict'
+    The status should be success
+    The output should not include 'Decoded Fields:'
+  End
 End

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate` no longer prints an empty `Decoded Fields:` heading when the only
+  decoded value is the MTI (which is already shown on its own line). The section
+  appears only when at least one non-MTI field was decoded.
+
 - `doctor` now treats a tie consistently. When more than one preset fits equally
   well, every tied preset is labeled `recommended` in the candidate list (not
   just the default) and each gets its own `Confirm with:` command, instead of
