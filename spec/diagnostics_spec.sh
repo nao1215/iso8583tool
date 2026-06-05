@@ -9,20 +9,20 @@
 Describe 'iso8583tool detection messaging'
   Include "$SHELLSPEC_SPECDIR/spec_helper.sh"
 
-  It 'presents tied presets for an ambiguous message' # bug 22
+  It 'presents tied presets for an ambiguous message'
     When run iso8583tool doctor "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --no-color
     The status should be success
     The output should include 'spec87ascii'
     The output should include 'fits equally well'
   End
 
-  It 'flags a truncated capture instead of only "custom layout"' # bug 39
+  It 'flags a truncated capture instead of only "custom layout"'
     When run iso8583tool doctor --raw 010000000000000008000103DF --no-color
     The status should be failure
     The output should include 'truncated or malformed'
   End
 
-  It 'validate calls out a truncated capture rather than doctor' # bug 40
+  It 'validate calls out a truncated capture rather than doctor'
     When run iso8583tool validate --raw 010000000000000008000103DF --no-color
     The status should be failure
     The output should include 'truncated or malformed'

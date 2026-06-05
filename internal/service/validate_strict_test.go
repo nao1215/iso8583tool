@@ -32,11 +32,11 @@ func TestStrictRejectsHollowAdviceAndNetwork(t *testing.T) {
 		mti    string
 		fields map[string]string
 	}{
-		{"0120", map[string]string{"11": "123456"}},             // bug 15: authorization advice
-		{"0220", map[string]string{"11": "123456"}},             // bug 16: financial advice
-		{"0820", map[string]string{"11": "123456"}},             // bug 17: network advice
-		{"0810", map[string]string{"11": "123456", "39": "00"}}, // bug 47: network response
-		{"0830", map[string]string{"11": "123456", "39": "00"}}, // bug 48: network advice response
+		{"0120", map[string]string{"11": "123456"}},             // authorization advice
+		{"0220", map[string]string{"11": "123456"}},             // financial advice
+		{"0820", map[string]string{"11": "123456"}},             // network advice
+		{"0810", map[string]string{"11": "123456", "39": "00"}}, // network response
+		{"0830", map[string]string{"11": "123456", "39": "00"}}, // network advice response
 	}
 	for _, tc := range cases {
 		t.Run(tc.mti, func(t *testing.T) {

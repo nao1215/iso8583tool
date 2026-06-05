@@ -138,7 +138,7 @@ func TestDiffFilterAliasesAndNormalization(t *testing.T) {
 	after.BinaryFields["55.9F02"] = "000000009999"
 	afterRaw, _ := WriteMessage(after, spec.MessageSpec)
 
-	// bug 45: "0" is an MTI alias just like "mti".
+	// "0" is an MTI alias just like "mti".
 	for _, f := range []string{"0", "mti"} {
 		res, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{f}, false)
 		if err != nil {
@@ -149,7 +149,7 @@ func TestDiffFilterAliasesAndNormalization(t *testing.T) {
 		}
 	}
 
-	// bug 14: a lowercase EMV tag filter selects the same path as uppercase.
+	// a lowercase EMV tag filter selects the same path as uppercase.
 	lower, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"55.9f02"}, false)
 	if err != nil {
 		t.Fatalf("DiffMessages lowercase tag: %v", err)
@@ -158,7 +158,7 @@ func TestDiffFilterAliasesAndNormalization(t *testing.T) {
 		t.Fatalf("lowercase tag filter should select 55.9F02, got %#v", lower.Changes)
 	}
 
-	// bug 46: a filter that matches nothing is reported, distinguishing a typo
+	// a filter that matches nothing is reported, distinguishing a typo
 	// from a real no-change result.
 	miss, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, []string{"999"}, false)
 	if err != nil {

@@ -11,7 +11,7 @@ Describe 'iso8583tool canonical field values'
 
   MSG="$EXAMPLES/0110-auth-response.hex"
 
-  It 'shows F3 with canonical width in the full describe view' # bug 11
+  It 'shows F3 with canonical width in the full describe view'
     When run iso8583tool view "$MSG" --no-color
     The status should be success
     The line 1 should be present
@@ -20,13 +20,13 @@ Describe 'iso8583tool canonical field values'
     The output should match pattern '*F3*: 000000*'
   End
 
-  It 'matches the filtered view for F4' # bug 11
+  It 'matches the filtered view for F4'
     When run iso8583tool view "$MSG" --filter 4 --no-color
     The status should be success
     The output should include '000000005000'
   End
 
-  It 'returns canonical decoded values in JSON for F3' # bug 21
+  It 'returns canonical decoded values in JSON for F3'
     When run iso8583tool view "$MSG" --format json
     The status should be success
     # Both the fields map and the decoded entry use the canonical width.
@@ -34,7 +34,7 @@ Describe 'iso8583tool canonical field values'
     The output should include '"value": "000000"'
   End
 
-  It 'returns canonical decoded values from validate for F3' # bug 21
+  It 'returns canonical decoded values from validate for F3'
     When run iso8583tool validate "$MSG" --format json
     The status should be success
     The output should include '"value": "000000"'

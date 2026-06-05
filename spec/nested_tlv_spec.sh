@@ -40,21 +40,21 @@ JSON
   BeforeEach 'setup'
   AfterEach 'cleanup'
 
-  It 'unpacks a nested TLV to its leaf path' # bug 41
+  It 'unpacks a nested TLV to its leaf path'
     When run iso8583tool convert "$WORK/a.hex" --spec "$WORK/spec.json"
     The status should be success
     The output should include '"55.70.9F02"'
     The output should not include '"55.70":'
   End
 
-  It 'selects a nested TLV leaf with --filter' # bug 42
+  It 'selects a nested TLV leaf with --filter'
     When run iso8583tool view "$WORK/a.hex" --spec "$WORK/spec.json" --filter 55.70.9F02 --no-color
     The status should be success
     The output should include '55.70.9F02'
     The output should not include '<not present>'
   End
 
-  It 'diffs at the nested TLV leaf tag' # bug 43
+  It 'diffs at the nested TLV leaf tag'
     When run iso8583tool diff "$WORK/a.hex" "$WORK/b.hex" --spec "$WORK/spec.json" --no-color
     The status should be success
     The output should include 'Field 55.70.9F02 changed'

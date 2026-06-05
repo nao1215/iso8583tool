@@ -16,12 +16,12 @@ func TestSpec87BCDStarterShape(t *testing.T) {
 	t.Parallel()
 	spec := Spec87BCDStarter()
 
-	// bug 07: field 55 must be a TLV composite so 55.<tag> packs.
+	// field 55 must be a TLV composite so 55.<tag> packs.
 	if _, ok := spec.Fields[55].(*field.Composite); !ok {
 		t.Errorf("field 55 is %T, want *field.Composite", spec.Fields[55])
 	}
 
-	// bug 08 / 09: PIN and MAC must be raw fixed-length binary.
+	// PIN and MAC must be raw fixed-length binary.
 	for _, id := range []int{52, 64} {
 		s := spec.Fields[id].Spec()
 		if s.Enc != encoding.Binary {
@@ -32,7 +32,7 @@ func TestSpec87BCDStarterShape(t *testing.T) {
 		}
 	}
 
-	// bug 10: variable-length fields must not keep an ASCII length prefix.
+	// variable-length fields must not keep an ASCII length prefix.
 	for _, id := range []int{32, 35, 36, 45} {
 		got := spec.Fields[id].Spec().Pref.Inspect()
 		if strings.HasPrefix(got, "ASCII.") {

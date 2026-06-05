@@ -77,7 +77,7 @@ func TestLooksLikeJSON(t *testing.T) {
 func TestLooksLikeJSONWithBOM(t *testing.T) {
 	t.Parallel()
 
-	// A UTF-8 BOM (EF BB BF) before the object must not hide the JSON. bug 12
+	// A UTF-8 BOM (EF BB BF) before the object must not hide the JSON.
 	bom := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"mti":"0100"}`)...)
 	if !LooksLikeJSON(bom) {
 		t.Fatal("a BOM-prefixed object should be detected as JSON")
@@ -87,7 +87,7 @@ func TestLooksLikeJSONWithBOM(t *testing.T) {
 func TestParseDocumentWithBOM(t *testing.T) {
 	t.Parallel()
 
-	// json.Unmarshal rejects a leading BOM, so ParseDocument must strip it. bug 13
+	// json.Unmarshal rejects a leading BOM, so ParseDocument must strip it.
 	bom := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"mti":"0100","fields":{"11":"123456"}}`)...)
 	doc, err := ParseDocument(bom)
 	if err != nil {
