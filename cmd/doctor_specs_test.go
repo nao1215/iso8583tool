@@ -213,7 +213,7 @@ func TestDoctorConfirmHintIsShellSafe(t *testing.T) {
 
 	// A path containing a space must be quoted.
 	spaced := filepath.Join(dir, "with space.hex")
-	if err := os.WriteFile(spaced, src, 0o600); err != nil { //nolint:gosec // spaced is under the test's temp dir
+	if err := os.WriteFile(spaced, src, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, out, _ := runApp("", "doctor", spaced, "--no-color")
