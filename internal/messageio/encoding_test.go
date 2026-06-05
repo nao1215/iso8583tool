@@ -1,6 +1,7 @@
 package messageio
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,8 @@ func TestLooksLikeHex(t *testing.T) {
 		{"whitespace only", []byte("  \n"), false},
 		{"raw binary with control byte", []byte{0x01, 0x00, 0x70, 0x04}, false},
 		{"non-hex letters", []byte("hello!"), false},
+		{"bom then hex", append([]byte{0xEF, 0xBB, 0xBF}, []byte("3031323300")...), true},
+		{"bom only", []byte{0xEF, 0xBB, 0xBF}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,4 +87,41 @@ func TestLooksLikeHex(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodeInputStripsBOM(t *testing.T) {
+	t.Parallel()
+
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	withBOM := append(append([]byte{}, bom...), []byte("30313233")...)
+
+	// A leading BOM must not poison hex decoding (auto and explicit hex paths).
+	for _, enc := range []string{"hex", "auto", ""} {
+		decoded, err := DecodeInput(withBOM, encOrHex(enc))
+		if err != nil {
+			t.Fatalf("DecodeInput(%q) with BOM: %v", enc, err)
+		}
+		if string(decoded) != "0123" {
+			t.Fatalf("DecodeInput(%q) = %q, want \"0123\"", enc, decoded)
+		}
+	}
+
+	// Raw decoding is a verbatim copy and must keep the BOM bytes untouched.
+	raw, err := DecodeInput(withBOM, "raw")
+	if err != nil {
+		t.Fatalf("DecodeInput raw: %v", err)
+	}
+	if !bytes.Equal(raw, withBOM) {
+		t.Fatalf("raw decode altered the bytes: %x", raw)
+	}
+}
+
+// encOrHex maps the auto sentinel to hex because DecodeInput itself only knows
+// hex/raw; auto is resolved a layer up. The point of the test is that a BOM does
+// not break the hex reading either way.
+func encOrHex(enc string) string {
+	if enc == "auto" {
+		return "hex"
+	}
+	return enc
 }

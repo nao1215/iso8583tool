@@ -28,4 +28,37 @@ Describe 'iso8583tool convert with a UTF-8 BOM'
     The status should be success
     The output should not include 'invalid character'
   End
+
+  Describe 'a BOM-prefixed hex fixture'
+    bom_hex_setup() {
+      make_workdir
+      { printf '\357\273\277'; cat "$EXAMPLES/0110-auth-response.hex"; } > "$WORK/bom.hex"
+    }
+    BeforeEach 'bom_hex_setup'
+    AfterEach 'cleanup'
+
+    It 'views a BOM-prefixed hex file'
+      When run iso8583tool view "$WORK/bom.hex" --no-color
+      The status should be success
+      The output should include '0110'
+    End
+
+    It 'doctors a BOM-prefixed hex file as hex, not raw'
+      When run iso8583tool doctor "$WORK/bom.hex" --no-color
+      The status should be success
+      The output should include 'hex input'
+    End
+
+    It 'validates a BOM-prefixed hex file'
+      When run iso8583tool validate "$WORK/bom.hex" --no-color
+      The status should be success
+      The output should include 'Validation: ok'
+    End
+
+    It 'converts a BOM-prefixed hex file to JSON'
+      When run iso8583tool convert "$WORK/bom.hex" --to json
+      The status should be success
+      The output should include '"mti"'
+    End
+  End
 End
