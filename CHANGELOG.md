@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `convert --output` now reports the top-level ISO field count in its
+  `packed N fields` summary, matching the `field_count` `doctor` reports for the
+  same message. It previously counted every TLV subtag (for example each
+  `55.<tag>`) as a separate field, so the summary disagreed with `doctor`.
+
 - `validate --strict` now checks advice and network-management messages that
   previously passed with only a STAN. An authorization/financial advice (`0120`,
   `0220`) is held to the same core requirements as the request it stands in for

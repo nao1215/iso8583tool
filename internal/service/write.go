@@ -96,8 +96,32 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 	}
 	return WriteResult{
 		Raw:        packed,
-		FieldCount: len(fieldPaths) + len(binaryPaths) + 1,
+		FieldCount: topLevelFieldCount(fieldPaths, binaryPaths),
 	}, nil
+}
+
+// topLevelFieldCount counts the distinct top-level ISO field ids across the
+// document's text and binary paths. A TLV subtag such as "55.9F02" counts toward
+// its parent field (55), and the MTI is not a data field, so the result matches
+// the field_count `doctor` reports for the same message instead of inflating to
+// one entry per TLV tag.
+func topLevelFieldCount(fieldPaths, binaryPaths []string) int {
+	ids := make(map[string]struct{}, len(fieldPaths)+len(binaryPaths))
+	for _, p := range fieldPaths {
+		ids[topLevelID(p)] = struct{}{}
+	}
+	for _, p := range binaryPaths {
+		ids[topLevelID(p)] = struct{}{}
+	}
+	return len(ids)
+}
+
+// topLevelID returns the field id portion of a dot-path ("55.9F02" -> "55").
+func topLevelID(path string) string {
+	if i := strings.IndexByte(path, '.'); i >= 0 {
+		return path[:i]
+	}
+	return path
 }
 
 // splitTLVPath splits a flat TLV path such as "55.9F02" into its field id and
