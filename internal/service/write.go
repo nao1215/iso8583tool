@@ -139,10 +139,7 @@ func topLevelFieldCount(fieldPaths, binaryPaths []string) int {
 
 // topLevelID returns the field id portion of a dot-path ("55.9F02" -> "55").
 func topLevelID(path string) string {
-	if i := strings.IndexByte(path, '.'); i >= 0 {
-		return path[:i]
-	}
-	return path
+	return messageio.NewPath(path).TopLevelID()
 }
 
 // marshalPathError turns moov's internal "not a PathMarshaler" failure into a
@@ -174,7 +171,7 @@ func isTextField(f field.Field) bool {
 // splitTLVPath splits a flat TLV path such as "55.9F02" into its field id and
 // tag. Deeper paths (for example "127.25.1") are not treated as TLV.
 func splitTLVPath(path string) (id int, tag string, ok bool) {
-	parts := strings.Split(path, ".")
+	parts := messageio.NewPath(path).Segments()
 	if len(parts) != 2 {
 		return 0, "", false
 	}

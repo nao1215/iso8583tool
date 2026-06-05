@@ -109,11 +109,7 @@ func isContentScanPath(path string) bool {
 // reporting false for a top-level positional field with no dot. So "55.57" and
 // "55.70.57" both yield "57", while "57" (positional field 57) yields no tag.
 func leafTag(path string) (string, bool) {
-	i := strings.LastIndexByte(path, '.')
-	if i < 0 {
-		return "", false
-	}
-	return path[i+1:], true
+	return messageio.NewPath(path).Leaf()
 }
 
 // digitsOnly returns the ASCII digits of s, dropping separators.

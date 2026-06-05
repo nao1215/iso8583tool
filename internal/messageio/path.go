@@ -11,6 +11,45 @@ import (
 // the primary bitmap, both of which the message owns and a document must not set.
 const maxFieldID = 128
 
+// Path is a parsed ISO 8583 field path: a top-level field id followed by any
+// nested dot-separated subfield segments, for example "55", "55.9F02", or
+// "55.70.9F02". It centralizes the dot-path parsing the pack, redact, view, and
+// diff layers all rely on, so "what is the field id" and "what is the leaf tag"
+// have a single answer.
+type Path struct {
+	raw      string
+	segments []string
+}
+
+// NewPath parses a dot-path into its segments. It does not validate the path;
+// use canonicalPath / ParseDocument for that. strings.Split always yields at
+// least one segment, so TopLevelID is always defined.
+func NewPath(raw string) Path {
+	return Path{raw: raw, segments: strings.Split(raw, ".")}
+}
+
+// String returns the original dot-path.
+func (p Path) String() string { return p.raw }
+
+// Segments returns the dot-separated parts of the path.
+func (p Path) Segments() []string { return p.segments }
+
+// TopLevelID returns the top-level field-id segment ("55.70.9F02" -> "55").
+func (p Path) TopLevelID() string { return p.segments[0] }
+
+// IsTopLevel reports whether the path addresses a top-level field with no
+// nested subfield ("55" is top-level; "55.9F02" is not).
+func (p Path) IsTopLevel() bool { return len(p.segments) == 1 }
+
+// Leaf returns the trailing segment (the TLV tag or subfield id) and true when
+// the path is nested. A top-level path has no leaf tag, so it returns ("", false).
+func (p Path) Leaf() (string, bool) {
+	if len(p.segments) < 2 {
+		return "", false
+	}
+	return p.segments[len(p.segments)-1], true
+}
+
 // canonicalPath validates a single document path and returns its canonical form.
 //
 // Canonicalization collapses spellings that address the same field — "02" and
@@ -25,7 +64,7 @@ func canonicalPath(path string) (string, error) {
 		return "", fmt.Errorf("invalid path %q: leading/trailing whitespace", path)
 	}
 
-	segments := strings.Split(path, ".")
+	segments := NewPath(path).Segments()
 	canon := make([]string, len(segments))
 	for i, seg := range segments {
 		if seg != strings.TrimSpace(seg) {

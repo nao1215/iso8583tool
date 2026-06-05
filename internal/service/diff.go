@@ -216,8 +216,8 @@ func comparePaths(a, b string) int {
 	if b == "mti" {
 		return 1
 	}
-	as := strings.Split(a, ".")
-	bs := strings.Split(b, ".")
+	as := messageio.NewPath(a).Segments()
+	bs := messageio.NewPath(b).Segments()
 	for i := 0; i < len(as) && i < len(bs); i++ {
 		if as[i] == bs[i] {
 			continue

@@ -129,3 +129,44 @@ func TestParseDocumentRejectsCanonicalDuplicates(t *testing.T) {
 		})
 	}
 }
+
+func TestPath(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		raw      string
+		topLevel string
+		isTop    bool
+		leaf     string
+		hasLeaf  bool
+		segs     int
+	}{
+		{"55", "55", true, "", false, 1},
+		{"55.9F02", "55", false, "9F02", true, 2},
+		{"55.70.9F02", "55", false, "9F02", true, 3},
+		{"48.2.1", "48", false, "1", true, 3},
+		{"mti", "mti", true, "", false, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Parallel()
+			p := NewPath(tc.raw)
+			if p.String() != tc.raw {
+				t.Errorf("String() = %q, want %q", p.String(), tc.raw)
+			}
+			if p.TopLevelID() != tc.topLevel {
+				t.Errorf("TopLevelID() = %q, want %q", p.TopLevelID(), tc.topLevel)
+			}
+			if p.IsTopLevel() != tc.isTop {
+				t.Errorf("IsTopLevel() = %v, want %v", p.IsTopLevel(), tc.isTop)
+			}
+			leaf, ok := p.Leaf()
+			if ok != tc.hasLeaf || leaf != tc.leaf {
+				t.Errorf("Leaf() = (%q, %v), want (%q, %v)", leaf, ok, tc.leaf, tc.hasLeaf)
+			}
+			if len(p.Segments()) != tc.segs {
+				t.Errorf("len(Segments()) = %d, want %d", len(p.Segments()), tc.segs)
+			}
+		})
+	}
+}
