@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A custom moov-io/iso8583 JSON spec passed with `--spec PATH` now loads the
+  `Hex`, `Track1`, `Track3`, and `IndexTag` field types, both at the top level
+  and inside composite subfields. Previously these failed with a "no constructor
+  for field type" error even though moov-io exports the field types, because the
+  upstream JSON importer does not register them. `IndexTag` is read as a
+  positional string subfield (moov-io has no field type backing that name).
+- A composite `tag` block that omits `sort` now loads instead of failing with
+  "unknown sort function"; an omitted sort defaults to hex-tag order, which
+  suits the BER-TLV composites these specs describe.
+
 ## [0.2.2] - 2026-06-05
 
 ### Fixed
