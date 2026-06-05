@@ -22,7 +22,7 @@ Describe 'iso8583tool custom JSON spec import'
   # write_doc writes a one-field JSON document so a custom spec can be exercised
   # end to end via convert.
   write_doc() {
-    printf '%s' '{"mti":"0100","fields":{"0":"0100"},"binary_fields":{"52":"A1B2C3D4E5F60708"}}' > "$WORK/doc.json"
+    printf '%s' '{"mti":"0100","binary_fields":{"52":"A1B2C3D4E5F60708"}}' > "$WORK/doc.json"
   }
 
   It 'loads a top-level Hex field and round-trips it'

@@ -48,6 +48,60 @@ Describe 'iso8583tool convert'
       The status should be failure
       The stderr should include '55.9F02'
     End
+
+    It 'rejects field id 0 (reserved for the MTI)'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"0\":\"9999\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'mti'
+    End
+
+    It 'rejects field id 1 (the bitmap)'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"1\":\"1234\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'bitmap'
+    End
+
+    It 'rejects field id 0 set through binary_fields'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"0\":\"31323334\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'mti'
+    End
+
+    It 'rejects an out-of-range field id'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"129\":\"x\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'invalid field id'
+    End
+
+    It 'rejects a non-numeric field id'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"A.1\":\"x\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'invalid field id'
+    End
+
+    It 'rejects a malformed dotted path'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"55..9F02\":\"00\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'empty segment'
+    End
+
+    It 'rejects leading whitespace in a path key'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\" 2\":\"4111111111111111\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'whitespace'
+    End
+
+    It 'rejects a leading-zero duplicate alias (02 vs 2)'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"02\":\"4111111111111111\",\"2\":\"4222222222222222\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'address field'
+    End
+
+    It 'rejects a case-different duplicate TLV alias (9f02 vs 9F02)'
+      When run sh -c 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"55.9f02\":\"000000001000\",\"55.9F02\":\"000000005000\"}}" | "$ISO_BIN" convert --to hex'
+      The status should be failure
+      The stderr should include 'address field'
+    End
   End
 
   Describe 'round-trip'
