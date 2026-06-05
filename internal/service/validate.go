@@ -195,12 +195,18 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	switch class {
 	case '1', '2': // authorization / financial
 		switch {
-		case isRequest:
-			require(3, "an authorization/financial request (processing code)")
-			require(4, "an authorization/financial request (amount)")
-			require(7, "an authorization/financial request (transmission date/time)")
+		case isRequest || isAdvice:
+			// An advice reports a transaction that already happened, so it carries
+			// the same core data elements as the request it stands in for.
+			context := "an authorization/financial request"
+			if isAdvice {
+				context = "an authorization/financial advice"
+			}
+			require(3, context+" (processing code)")
+			require(4, context+" (amount)")
+			require(7, context+" (transmission date/time)")
 			if !hasAny(2, 35, 45) {
-				add(SeverityError, "2", "strict: an authorization/financial request needs a PAN source (field 2, 35, or 45)")
+				add(SeverityError, "2", "strict: "+context+" needs a PAN source (field 2, 35, or 45)")
 			}
 			recommend(37, "card messages (retrieval reference number)")
 		case isResponse:
@@ -220,10 +226,11 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 			require(39, "a reversal response (response code)")
 		}
 	case '8': // network management
-		switch {
-		case isRequest:
-			require(70, "a network-management request (network management code)")
-		case isResponse:
+		// Every network-management message (request, advice, response, advice
+		// response) identifies its purpose with the network-management code in
+		// field 70, so it is required across the board.
+		require(70, "a network-management message (network management code)")
+		if isResponse {
 			require(39, "a network-management response (response code)")
 		}
 	}
