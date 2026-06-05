@@ -583,16 +583,37 @@ func activeExtensions(fields map[int]field.Field, catalog basei.ExtensionCatalog
 		if !ok {
 			continue
 		}
-		// When the active spec models this field as a TLV composite, report the
-		// tlv strategy instead of the catalog default, which assumes the built-in
-		// BASE I layout (for example field 127 as a nested bitmap). A custom spec
-		// that defines 127 as BER-TLV should not be described as a bitmap.
-		if _, isComposite := fields[id].(*field.Composite); isComposite {
-			fieldDef.Strategy = basei.StrategyTLV
-		}
+		// Report the strategy the active spec actually uses, not the catalog's
+		// BASE I assumption: a positional composite is positional, a bitmap
+		// composite is bitmap, a BER-TLV composite is tlv, and a plain field is
+		// opaque. This keeps a field documented as bitmap/positional but modeled
+		// as a plain string from being mislabeled.
+		fieldDef.Strategy = deriveStrategy(fields[id], fieldDef.Strategy)
 		result = append(result, fieldDef)
 	}
 	return result
+}
+
+// deriveStrategy reports how the active spec models a field. A composite is
+// classified by its tag/bitmap spec; any non-composite (plain string/numeric)
+// is opaque. fallback is used only for the unusual composite with neither a tag
+// nor a bitmap.
+func deriveStrategy(f field.Field, fallback basei.ExtensionStrategy) basei.ExtensionStrategy {
+	composite, ok := f.(*field.Composite)
+	if !ok {
+		return basei.StrategyOpaque
+	}
+	s := composite.Spec()
+	switch {
+	case s.Bitmap != nil:
+		return basei.StrategyBitmap
+	case s.Tag != nil && s.Tag.Enc != nil:
+		return basei.StrategyTLV
+	case s.Tag != nil:
+		return basei.StrategyPositional
+	default:
+		return fallback
+	}
 }
 
 type UnknownTag struct {

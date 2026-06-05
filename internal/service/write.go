@@ -31,7 +31,7 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 		value := doc.Fields[path]
 		if strings.Contains(path, ".") {
 			if err := msg.MarshalPath(path, value); err != nil {
-				return WriteResult{}, fmt.Errorf("set %s: %w", path, err)
+				return WriteResult{}, marshalPathError("set", path, err)
 			}
 			continue
 		}
@@ -66,7 +66,7 @@ func WriteMessage(doc messageio.Document, spec *iso8583.MessageSpec) (WriteResul
 
 		if strings.Contains(path, ".") {
 			if err := msg.MarshalPath(path, data); err != nil {
-				return WriteResult{}, fmt.Errorf("set binary %s: %w", path, err)
+				return WriteResult{}, marshalPathError("set binary", path, err)
 			}
 			continue
 		}
@@ -135,6 +135,17 @@ func topLevelID(path string) string {
 		return path[:i]
 	}
 	return path
+}
+
+// marshalPathError turns moov's internal "not a PathMarshaler" failure into a
+// user-facing explanation: in the active spec the field is a plain value, so it
+// has no dot-path subfields. Other errors are wrapped verbatim.
+func marshalPathError(label, path string, err error) error {
+	if strings.Contains(err.Error(), "not a PathMarshaler") {
+		top := topLevelID(path)
+		return fmt.Errorf("%s %s: field %s is a plain field in this spec and has no dot-path subfields; set field %s as a whole value instead", label, path, top, top)
+	}
+	return fmt.Errorf("%s %s: %w", label, path, err)
 }
 
 // splitTLVPath splits a flat TLV path such as "55.9F02" into its field id and

@@ -257,6 +257,83 @@ func TestEmptyExtensionsDisablesExtensionDisplay(t *testing.T) {
 	}
 }
 
+func TestCustomSpecGetsNoBaseICatalog(t *testing.T) {
+	t.Parallel()
+
+	// A bare custom --spec PATH is not BASE I, so the built-in extension catalog
+	// must not bleed its field names/strategies into the view. A plain-string
+	// field 55 should show its own description, not "ICC ... [tlv]".
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "f55-string.json")
+	if err := os.WriteFile(spec, []byte(`{"name":"F55 string","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"55":{"type":"String","length":20,"description":"Partner Blob","enc":"ASCII","prefix":"ASCII.LLL"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc := filepath.Join(dir, "msg.json")
+	if err := os.WriteFile(doc, []byte(`{"mti":"0100","fields":{"11":"123456","55":"HELLOWORLD"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hexOut := filepath.Join(dir, "msg.hex")
+	if code, _, errOut := runApp("", "convert", doc, "--to", "hex", "--spec", spec, "--output", hexOut); code != 0 {
+		t.Fatalf("convert failed: %d\n%s", code, errOut)
+	}
+
+	code, out, _ := runApp("", "view", hexOut, "--spec", spec, "--encoding", "hex", "--no-color")
+	if code != 0 {
+		t.Fatalf("view custom spec failed: %d\n%s", code, out)
+	}
+	if strings.Contains(out, "Extension Field Strategy:") {
+		t.Errorf("a custom spec must not show the BASE I extension section:\n%s", out)
+	}
+	if strings.Contains(out, "ICC System Related Data") {
+		t.Errorf("custom field 55 must use its own description, not the BASE I catalog name:\n%s", out)
+	}
+	if strings.Contains(out, "Partner Blob") == false {
+		t.Errorf("custom field 55 should show its own spec description:\n%s", out)
+	}
+}
+
+func TestBuiltinFieldStrategyMatchesSpec(t *testing.T) {
+	t.Parallel()
+
+	// The built-in spec models field 127 as a plain string, so the extension
+	// section must report opaque, not the catalog's bitmap assumption.
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "f127.json")
+	if err := os.WriteFile(doc, []byte(`{"mti":"0100","fields":{"11":"123456","127":"EEE"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hexOut := filepath.Join(dir, "f127.hex")
+	if code, _, errOut := runApp("", "convert", doc, "--to", "hex", "--output", hexOut); code != 0 {
+		t.Fatalf("convert failed: %d\n%s", code, errOut)
+	}
+	code, out, _ := runApp("", "view", hexOut, "--no-color")
+	if code != 0 {
+		t.Fatalf("view failed: %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "F127 Reserved Private [opaque]") {
+		t.Errorf("built-in field 127 (a plain string) should report [opaque], not [bitmap]:\n%s", out)
+	}
+}
+
+func TestDotPathOnPlainBuiltinFieldExplains(t *testing.T) {
+	t.Parallel()
+
+	// Field 48 is a plain string in the built-in spec; setting 48.1 must fail with
+	// an explanation, not moov's internal "not a PathMarshaler".
+	for _, path := range []string{"48.1", "127.1"} {
+		code, _, errOut := runApp(`{"mti":"0100","fields":{"11":"123456","`+path+`":"AB"}}`, "convert", "--to", "hex")
+		if code == 0 {
+			t.Fatalf("setting %s on a plain field should fail", path)
+		}
+		if strings.Contains(errOut, "PathMarshaler") {
+			t.Errorf("error for %s should not leak the internal PathMarshaler wording:\n%s", path, errOut)
+		}
+		if !strings.Contains(errOut, "dot-path subfields") {
+			t.Errorf("error for %s should explain the field has no dot-path subfields:\n%s", path, errOut)
+		}
+	}
+}
+
 // TestViewFilterJSONMissingFiltersAlwaysArray pins that missing_filters is always
 // present as an array (never null/absent), so jq pipelines are stable.
 func TestViewFilterJSONMissingFiltersAlwaysArray(t *testing.T) {

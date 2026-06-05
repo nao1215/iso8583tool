@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `Extension Field Strategy` section now describes how the active spec
+  actually models each field instead of the catalog's BASE I assumption: a
+  positional composite reports `positional`, a bitmap composite `bitmap`, a
+  BER-TLV composite `tlv`, and a plain field `opaque` (so the built-in field 127,
+  modeled as a plain string, is no longer mislabeled `bitmap`).
+- A bare custom `--spec PATH` no longer inherits the built-in BASE I extension
+  catalog. A custom spec's fields are described by the spec itself — no BASE I
+  field names (`ICC System Related Data`, `Additional Data - Private`), no
+  spurious `tlv` note on a plain string field 55, and no `Extension Field
+  Strategy` section at all — unless a catalog is supplied explicitly with
+  `--config`.
+- Setting a dot-path on a field the active spec models as a plain value (for
+  example `48.1` or `127.1` under the built-in preset) now fails with a clear
+  message — the field has no dot-path subfields — instead of leaking moov's
+  internal `not a PathMarshaler` error.
+
 - The full `view` describe output now keeps the parent path of a nested
   composite at any depth. A constructed BER-TLV leaf shows as `55.70.9F02` (and
   its header as `F55.70`), and a nested positional composite shows as `48.2.1`

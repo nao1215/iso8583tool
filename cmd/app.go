@@ -970,9 +970,14 @@ func (a *App) loadContext(specName, configPath string) (resolvedContext, error) 
 		cfg = loaded
 		baseDir = filepath.Dir(path)
 	}
+	customSpec := false
 	if spec := strings.TrimSpace(specName); spec != "" {
 		cfg.Spec = spec
 		baseDir = a.workDir
+		// A custom JSON spec (--spec PATH) is not BASE I; only a built-in preset
+		// name is described by the built-in extension catalog.
+		_, isPreset := basei.LookupPreset(spec)
+		customSpec = !isPreset
 	}
 
 	specResult, err := messagespec.Load(baseDir, cfg)
@@ -980,10 +985,18 @@ func (a *App) loadContext(specName, configPath string) (resolvedContext, error) 
 		return resolvedContext{}, err
 	}
 
+	// The extension catalog applies to built-in BASE I presets, or whatever a
+	// --config explicitly provides. A bare custom --spec PATH gets no catalog, so
+	// its fields are described by the spec itself, not by BASE I field names.
+	catalog := cfg.Catalog()
+	if customSpec && strings.TrimSpace(configPath) == "" {
+		catalog = basei.ExtensionCatalog{}
+	}
+
 	return resolvedContext{
 		specLabel: specResult.Label,
 		spec:      specResult,
-		catalog:   cfg.Catalog(),
+		catalog:   catalog,
 	}, nil
 }
 
