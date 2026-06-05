@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sensitive-data masking now covers cases it previously missed, across `view`,
+  `redact`, and `diff`:
+  - A PAN or track carried in a binary (hex-encoded) field — for example a
+    binary field 2, field 35, or a private field 63 holding `PAN=...` bytes — is
+    now masked, not only the text representation.
+  - Sensitive EMV/TLV tags (`5A`, `56`, `57`, `99`, `9F1F`, `9F20`, and now
+    `9F6B` Track 2 Equivalent Data) are masked in any TLV container (`55`, `127`,
+    …) and at any nesting depth (`55.70.57`), whether or not the active spec
+    defines the tag.
+  - Free-form additional-data fields (for example 44 and 54) are content-scanned
+    for an embedded PAN, and embedded PANs written with space or hyphen grouping
+    (`4111 1111 1111 1111`, `4111-1111-...`) are masked.
+  - Field 34 (Extended PAN) is masked; field 20 is no longer masked (in the 1987
+    layout it is the PAN Extended Country Code, not a secondary PAN), so its real
+    value shows in `view`, `redact`, and `diff`.
+  - The embedded-PAN scanner no longer masks plain numeric identifiers: a
+    candidate is masked only when its digits pass the Luhn check or it follows a
+    PAN-ish key label, so `ORDER_ID=1234567890123` is left intact.
+- `view` reports a field's extension strategy as `tlv` when the active spec
+  models it as a BER-TLV composite, instead of the built-in catalog default
+  (which described, for example, field 127 as a nested bitmap).
+
 - A constructed (nested) BER-TLV tag — a TLV tag whose value is itself a TLV
   template — now expands to its leaf dot-path (for example `55.70.9F02`) when a
   message is unpacked. It previously collapsed into the parent tag's raw blob

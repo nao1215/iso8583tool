@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/hex"
 	"errors"
 	"regexp"
 	"sort"
@@ -13,34 +14,140 @@ import (
 	"github.com/nao1215/iso8583tool/internal/messageio"
 )
 
-// privateFieldIDs are the reserved / private positional, opaque, or bitmap
-// fields whose free-form text can carry a PAN or track that no per-field or
-// per-tag rule would otherwise catch (for example "63":"PAN=4111...").
-var privateFieldIDs = map[string]bool{
-	"48": true, "60": true, "61": true, "62": true, "63": true,
+// panFieldIDs are the positional fields that carry a primary account number:
+// field 2 (PAN) and field 34 (Extended PAN). Field 20 is NOT here — in the 1987
+// layout it is the "PAN Extended Country Code", not a secondary PAN.
+var panFieldIDs = map[string]bool{"2": true, "34": true}
+
+// trackFieldIDs are the positional fields that carry magnetic-stripe track data.
+var trackFieldIDs = map[string]bool{"35": true, "36": true, "45": true}
+
+// secretFieldIDs are positional fields that are fully masked (no BIN kept), such
+// as the PIN block.
+var secretFieldIDs = map[string]bool{"52": true}
+
+// contentScanFieldIDs are reserved / private / additional-data fields whose
+// free-form value can carry a PAN or track that no positional or per-tag rule
+// would otherwise catch (for example "63":"PAN=4111..." or "44":"PAN=...").
+var contentScanFieldIDs = map[string]bool{
+	"43": true, "44": true, "46": true, "47": true, "48": true, "54": true,
+	"60": true, "61": true, "62": true, "63": true,
+	"120": true, "121": true, "122": true, "123": true,
 	"124": true, "125": true, "126": true, "127": true,
 }
 
-// embeddedPANPattern matches a run of 13-19 digits — the length of a PAN.
-var embeddedPANPattern = regexp.MustCompile(`\d{13,19}`)
+// embeddedPANPattern matches a candidate PAN: 13-19 digits, optionally grouped
+// by single spaces or hyphens (so "4111 1111 1111 1111" and "4111-1111-..."
+// match too).
+var embeddedPANPattern = regexp.MustCompile(`[0-9](?:[ -]?[0-9]){12,18}`)
 
-// maskEmbeddedSensitive masks PAN-length digit runs inside a free-form value,
-// keeping the BIN and last four. It is conservative in scope (only private
-// fields are scanned, so defined numeric fields like F90 are untouched) but
-// fail-safe in content: any 13-19 digit run is masked whether or not it is
-// Luhn-valid, so a test or partner-specific PAN does not slip through.
+// panKeyPattern matches a PAN-ish key label immediately before a candidate (for
+// example "PAN=" or "card no: "), so an explicitly labeled account number is
+// masked even when its digits are not Luhn-valid (some test PANs are not).
+var panKeyPattern = regexp.MustCompile(`(?i)\b(pan|cardnumber|cardno|card|account|acct|cvv|cvc|cc)[\s:=]*$`)
+
+// maskEmbeddedSensitive masks PAN-shaped runs inside a free-form value, keeping
+// the BIN and last four and preserving any grouping separators. To avoid masking
+// non-PAN identifiers (order ids, reference numbers), a candidate is masked only
+// when its digits pass the Luhn check or it directly follows a PAN-ish key label;
+// an arbitrary numeric id satisfies neither.
 func maskEmbeddedSensitive(value string) string {
-	return embeddedPANPattern.ReplaceAllStringFunc(value, maskPAN)
+	locs := embeddedPANPattern.FindAllStringIndex(value, -1)
+	if locs == nil {
+		return value
+	}
+	var b strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		b.WriteString(value[prev:loc[0]])
+		match := value[loc[0]:loc[1]]
+		digits := digitsOnly(match)
+		labeled := panKeyPattern.MatchString(value[:loc[0]])
+		if len(digits) >= 13 && len(digits) <= 19 && (luhnValid(digits) || labeled) {
+			b.WriteString(maskPANKeepingSeparators(match))
+		} else {
+			b.WriteString(match)
+		}
+		prev = loc[1]
+	}
+	b.WriteString(value[prev:])
+	return b.String()
 }
 
-// isPrivateFieldPath reports whether path's top-level field id is a reserved /
-// private field whose free-form value should be content-scanned.
-func isPrivateFieldPath(path string) bool {
-	id := path
-	if i := strings.IndexByte(path, '.'); i >= 0 {
-		id = path[:i]
+// isContentScanPath reports whether path's top-level field id is one whose
+// free-form value should be content-scanned for an embedded PAN/track.
+func isContentScanPath(path string) bool {
+	return contentScanFieldIDs[topLevelID(path)]
+}
+
+// leafTag returns the trailing dot-segment of a composite path (the TLV tag),
+// reporting false for a top-level positional field with no dot. So "55.57" and
+// "55.70.57" both yield "57", while "57" (positional field 57) yields no tag.
+func leafTag(path string) (string, bool) {
+	i := strings.LastIndexByte(path, '.')
+	if i < 0 {
+		return "", false
 	}
-	return privateFieldIDs[id]
+	return path[i+1:], true
+}
+
+// digitsOnly returns the ASCII digits of s, dropping separators.
+func digitsOnly(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// luhnValid reports whether a digit string passes the Luhn checksum.
+func luhnValid(digits string) bool {
+	sum := 0
+	double := false
+	for i := len(digits) - 1; i >= 0; i-- {
+		d := int(digits[i] - '0')
+		if double {
+			d *= 2
+			if d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+		double = !double
+	}
+	return sum%10 == 0
+}
+
+// maskPANKeepingSeparators masks all but the first six and last four digits of a
+// PAN-shaped string, leaving any grouping separators in place.
+func maskPANKeepingSeparators(s string) string {
+	total := len(digitsOnly(s))
+	out := []byte(s)
+	seen := 0
+	for i := 0; i < len(out); i++ {
+		if out[i] < '0' || out[i] > '9' {
+			continue
+		}
+		seen++
+		if seen > 6 && seen <= total-4 {
+			out[i] = '*'
+		}
+	}
+	return string(out)
+}
+
+// binaryEmbedsSensitive reports whether the raw bytes behind a hex-encoded binary
+// field value contain an embedded PAN/track when read as text. A binary private
+// field can hold ASCII like "PAN=4111..." that the hex form hides.
+func binaryEmbedsSensitive(hexValue string) bool {
+	raw, err := hex.DecodeString(strings.ReplaceAll(hexValue, " ", ""))
+	if err != nil {
+		return false
+	}
+	s := string(raw)
+	return maskEmbeddedSensitive(s) != s
 }
 
 // safeDescribeFilters returns moov Describe filters that mask the cardholder
@@ -70,26 +177,45 @@ func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
 		filters = append(filters, iso8583.FilterField(strconv.Itoa(id), canonical))
 	}
 
-	filters = append(filters,
-		iso8583.FilterField("2", mask(maskPAN)),
-		iso8583.FilterField("20", mask(maskPAN)),
-		iso8583.FilterField("35", mask(maskTrack)),
-		iso8583.FilterField("36", mask(maskTrack)),
-		iso8583.FilterField("45", mask(maskTrack)),
-		iso8583.FilterField("52", mask(maskAll)),
-		iso8583.FilterField("55", iso8583.EMVFilter),
-	)
-	// Content-scan the free-form private fields so an embedded PAN does not leak
+	for id := range panFieldIDs {
+		filters = append(filters, iso8583.FilterField(id, mask(maskPAN)))
+	}
+	for id := range trackFieldIDs {
+		filters = append(filters, iso8583.FilterField(id, mask(maskTrack)))
+	}
+	for id := range secretFieldIDs {
+		filters = append(filters, iso8583.FilterField(id, mask(maskAll)))
+	}
+	// Sensitive EMV/TLV tags are masked by their tag key, so a tag is covered
+	// wherever it nests (55.57, 127.57, 55.70.57) because describe applies the
+	// same filter map to every composite level.
+	for _, tag := range cardholderEMVTags {
+		filters = append(filters, iso8583.FilterField(tag, mask(maskAll)))
+	}
+	// Content-scan the free-form / private fields so an embedded PAN does not leak
 	// through the text view.
-	for id := range privateFieldIDs {
+	for id := range contentScanFieldIDs {
 		filters = append(filters, iso8583.FilterField(id, mask(maskEmbeddedSensitive)))
 	}
 	return filters
 }
 
-// cardholderEMVTags are Field 55 tags that carry the PAN, track, or PIN in EMV
-// form. They are masked anywhere a message is displayed.
-var cardholderEMVTags = []string{"5A", "57", "56", "99", "9F1F", "9F20"}
+// cardholderEMVTags are TLV tags that carry the PAN, track, or PIN in EMV form
+// (5A account number, 56/57/9F6B track data, 99 PIN, 9F1F/9F20 track
+// discretionary). They are masked anywhere a message is displayed, in any TLV
+// container and at any nesting depth.
+var cardholderEMVTags = []string{"5A", "57", "56", "99", "9F1F", "9F20", "9F6B"}
+
+// isSensitiveTLVTag reports whether a TLV tag carries cardholder data and must be
+// masked wherever it appears.
+func isSensitiveTLVTag(tag string) bool {
+	for _, t := range cardholderEMVTags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
 
 // cryptogramTag is the EMV Application Cryptogram. It is not cardholder data, so
 // view keeps it for debugging, but redact masks it as well.
@@ -100,39 +226,71 @@ const cryptogramTag = "9F26"
 // masking that `view` applies so its output never leaks cardholder data, and it
 // is the base for `redact`.
 func MaskCardholderData(doc *messageio.Document) []string {
-	var masked []string
-	mask := func(store map[string]string, path string, fn func(string) string) {
-		v, ok := store[path]
-		if !ok {
-			return
+	maskedSet := map[string]bool{}
+	markMasked := func(path string) { maskedSet[path] = true }
+
+	// Positional cardholder fields, in whichever representation the document
+	// carries them. A binary representation (hex bytes, no clean digit boundary)
+	// is fully masked; a text representation keeps the BIN and last four.
+	maskPositional(doc, panFieldIDs, maskPAN, markMasked)
+	maskPositional(doc, trackFieldIDs, maskTrack, markMasked)
+	maskPositional(doc, secretFieldIDs, maskAll, markMasked)
+
+	// Sensitive TLV tags, masked by their leaf tag so they are caught in any
+	// container (55, 127, ...) and at any depth (55.70.57), known or unknown.
+	for path, v := range doc.BinaryFields {
+		if tag, ok := leafTag(path); ok && isSensitiveTLVTag(tag) {
+			doc.BinaryFields[path] = maskAll(v)
+			markMasked(path)
 		}
-		store[path] = fn(v)
+	}
+	for path, v := range doc.Fields {
+		if tag, ok := leafTag(path); ok && isSensitiveTLVTag(tag) {
+			doc.Fields[path] = maskAll(v)
+			markMasked(path)
+		}
+	}
+
+	// Free-form fields can embed a PAN/track that no positional or tag rule
+	// covers, in text ("PAN=4111...") or in hex-encoded bytes.
+	for path, v := range doc.Fields {
+		if isContentScanPath(path) {
+			if mv := maskEmbeddedSensitive(v); mv != v {
+				doc.Fields[path] = mv
+				markMasked(path)
+			}
+		}
+	}
+	for path, v := range doc.BinaryFields {
+		if isContentScanPath(path) && binaryEmbedsSensitive(v) {
+			doc.BinaryFields[path] = maskAll(v)
+			markMasked(path)
+		}
+	}
+
+	masked := make([]string, 0, len(maskedSet))
+	for path := range maskedSet {
 		masked = append(masked, path)
 	}
-
-	mask(doc.Fields, "2", maskPAN)        // Primary Account Number
-	mask(doc.Fields, "20", maskPAN)       // Secondary PAN
-	mask(doc.Fields, "35", maskTrack)     // Track 2
-	mask(doc.Fields, "36", maskTrack)     // Track 3
-	mask(doc.Fields, "45", maskTrack)     // Track 1
-	mask(doc.BinaryFields, "52", maskAll) // PIN data
-	for _, tag := range cardholderEMVTags {
-		mask(doc.BinaryFields, "55."+tag, maskAll)
-	}
-
-	// Private / free-form fields can embed a PAN that no per-field rule covers.
-	for path, v := range doc.Fields {
-		if !isPrivateFieldPath(path) {
-			continue
-		}
-		if mv := maskEmbeddedSensitive(v); mv != v {
-			doc.Fields[path] = mv
-			masked = append(masked, path)
-		}
-	}
-
 	sort.Strings(masked)
 	return masked
+}
+
+// maskPositional masks the given positional field ids in whichever representation
+// the document uses: a text value gets textMask (which may keep the BIN), while a
+// binary (hex) value is fully masked because it has no clean digit boundary.
+func maskPositional(doc *messageio.Document, ids map[string]bool, textMask func(string) string, mark func(string)) {
+	for id := range ids {
+		if v, ok := doc.Fields[id]; ok {
+			doc.Fields[id] = textMask(v)
+			mark(id)
+			continue
+		}
+		if v, ok := doc.BinaryFields[id]; ok {
+			doc.BinaryFields[id] = maskAll(v)
+			mark(id)
+		}
+	}
 }
 
 // RedactMessage unpacks a message and returns a sanitized document with
@@ -146,10 +304,12 @@ func RedactMessage(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, [
 	}
 
 	masked := MaskCardholderData(&doc)
-	// redact also masks the application cryptogram.
-	if v, ok := doc.BinaryFields["55."+cryptogramTag]; ok {
-		doc.BinaryFields["55."+cryptogramTag] = maskAll(v)
-		masked = append(masked, "55."+cryptogramTag)
+	// redact also masks the application cryptogram, in any TLV container/depth.
+	for path, v := range doc.BinaryFields {
+		if tag, ok := leafTag(path); ok && tag == cryptogramTag {
+			doc.BinaryFields[path] = maskAll(v)
+			masked = append(masked, path)
+		}
 	}
 
 	// Unknown TLV tags can hold anything, including cardholder data, so a
@@ -220,28 +380,26 @@ func maskUnknownInText(body string, tags []UnknownTag) string {
 // maskValueForDiff returns the display form of a field value for diff output.
 // It applies the same masking view uses so diff is as safe to share as view:
 // the PAN keeps BIN + last four, track data keeps its BIN, and PIN, cardholder
-// EMV tags, and unknown TLV tags are fully masked. unknownPaths lists the
-// Field 55 tags the active spec does not define.
+// TLV tags (any container/depth), and unknown TLV tags are fully masked.
+// unknownPaths lists the TLV tags the active spec does not define.
 func maskValueForDiff(path, value string, unknownPaths map[string]bool) string {
-	switch path {
-	case "2", "20": // primary / secondary account number
-		return maskPAN(value)
-	case "35", "36", "45": // track 2 / track 3 / track 1
-		return maskTrack(value)
-	case "52": // PIN data
-		return maskAll(value)
-	}
-	if unknownPaths[path] {
-		return maskAll(value)
-	}
-	if tag, ok := strings.CutPrefix(path, "55."); ok {
-		for _, sensitive := range cardholderEMVTags {
-			if sensitive == tag {
-				return maskAll(value)
-			}
+	if tag, ok := leafTag(path); ok {
+		if isSensitiveTLVTag(tag) || unknownPaths[path] {
+			return maskAll(value)
 		}
 	}
-	if isPrivateFieldPath(path) {
+	id := topLevelID(path)
+	if path == id { // a top-level positional field
+		switch {
+		case panFieldIDs[id]:
+			return maskPAN(value)
+		case trackFieldIDs[id]:
+			return maskTrack(value)
+		case secretFieldIDs[id]:
+			return maskAll(value)
+		}
+	}
+	if isContentScanPath(path) {
 		return maskEmbeddedSensitive(value)
 	}
 	return value

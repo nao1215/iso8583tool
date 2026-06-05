@@ -151,7 +151,7 @@ func FuzzViewNeverLeaksPAN(f *testing.F) {
 	}
 	pal := render.NewPalette(false)
 	maskFor := map[string]func(string) string{
-		"2": maskPAN, "20": maskPAN, "35": maskTrack, "36": maskTrack, "45": maskTrack,
+		"2": maskPAN, "34": maskPAN, "35": maskTrack, "36": maskTrack, "45": maskTrack,
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {

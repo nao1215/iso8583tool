@@ -127,7 +127,7 @@ func TestPBTConvertRoundTripIsFixedPoint(t *testing.T) {
 // sensitivePaths returns the paths that redact/view treat as cardholder data,
 // for the given canonical document.
 func sensitivePaths(doc messageio.Document) []string {
-	paths := []string{"2", "20", "35", "36", "45", "52"}
+	paths := []string{"2", "34", "35", "36", "45", "52"}
 	for _, tag := range cardholderEMVTags {
 		paths = append(paths, "55."+tag)
 	}
