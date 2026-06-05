@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-05
+
+This release works through a wide backlog of correctness, ergonomics, safety, and
+spec-fidelity issues found while exercising the CLI, hardens the parsing, masking,
+and rendering layers with fuzzing and property-based tests, and consolidates the
+field-path handling behind a single domain type.
+
 ### Fixed
 
 - `validate --strict` now rejects an alphabetic value in a numeric field. The
@@ -319,7 +326,9 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nao1215/iso8583tool/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/nao1215/iso8583tool/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/nao1215/iso8583tool/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/nao1215/iso8583tool/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nao1215/iso8583tool/compare/v0.1.0...v0.2.0
