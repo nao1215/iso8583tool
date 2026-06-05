@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/nao1215/iso8583tool/internal/basei"
 	"github.com/nao1215/iso8583tool/internal/config"
@@ -88,6 +89,8 @@ func (a *App) Run(args []string) int {
 		return a.runRedact(args[1:])
 	case "convert":
 		return a.runConvert(args[1:])
+	case "send":
+		return a.runSend(args[1:])
 	case "validate":
 		return a.runValidate(args[1:])
 	case "doctor":
@@ -116,7 +119,7 @@ func (a *App) runHelp(args []string) int {
 	rest := args[1:]
 
 	switch name {
-	case "view", "diff", "redact", "convert", "validate", "doctor", "specs", "sample":
+	case "view", "diff", "redact", "convert", "send", "validate", "doctor", "specs", "sample":
 		forwarded := make([]string, 0, len(args)+1)
 		forwarded = append(forwarded, args...)
 		forwarded = append(forwarded, "--help")
@@ -585,6 +588,204 @@ func convertDirection(to string, source []byte) (string, error) {
 	}
 }
 
+func (a *App) runSend(args []string) int {
+	flagSet := newFlagSet("send", a.stderr)
+	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
+	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
+	framingName := flagSet.String("framing", "2byte-binary", "length framing: 2byte-binary, 4digit-ascii, or none")
+	timeout := flagSet.Duration("timeout", 5*time.Second, "connect/read deadline (e.g. 5s, 500ms)")
+	format := flagSet.String("format", "describe", "output format: describe or json")
+	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
+	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
+	unsafe := flagSet.Bool("unsafe", false, "show raw PAN, track, PIN, and private-field data (default: masked)")
+	flagSet.Usage = func() {
+		writeLine(flagSet.Output(), "Send an ISO8583 message over TCP and decode the single response.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool send HOST:PORT [MESSAGE|-] [--raw HEX] [--framing 2byte-binary|4digit-ascii|none] [--timeout DURATION] [--encoding auto|hex|raw] [--format describe|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "MESSAGE is a JSON document (packed with the active spec) or a packed hex/raw message; reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(flagSet.Output(), "Cardholder data is masked by default; pass --unsafe to show raw values.")
+		printFlagDefaults(flagSet.Output(), flagSet)
+	}
+	if code, ok := a.parseFlags(flagSet, args); !ok {
+		return code
+	}
+	address := strings.TrimSpace(flagSet.Arg(0))
+	if address == "" || flagSet.NArg() > 2 {
+		flagSet.Usage()
+		return 1
+	}
+	messageTarget := flagSet.Arg(1)
+
+	if *format != "describe" && *format != "json" {
+		writef(a.stderr, "unsupported format %q\n", *format)
+		return 1
+	}
+	framing, err := service.ParseFraming(*framingName)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+	mode, err := resolveColorMode(*color, *noColor)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	ctx, err := a.loadContext(*specName, *configPath)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	payload, err := a.readSendPayload(messageTarget, *raw, *encoding, ctx)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	// Build the request view before sending so a message that does not decode
+	// under the active spec is reported as a decode failure, not silently sent.
+	reqView, err := service.ViewMessage(payload, ctx.spec.MessageSpec, ctx.catalog, "json", nil, render.NewPalette(false), *unsafe)
+	if err != nil {
+		writeLine(a.stderr, fmt.Errorf("decode request with %s: %w", ctx.specLabel, err))
+		return 1
+	}
+
+	result, err := service.SendMessage(service.SendRequest{
+		Address: address,
+		Payload: payload,
+		Framing: framing,
+		Timeout: *timeout,
+	})
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	respView, err := service.ViewMessage(result.Response, ctx.spec.MessageSpec, ctx.catalog, "json", nil, render.NewPalette(false), *unsafe)
+	if err != nil {
+		writeLine(a.stderr, fmt.Errorf("decode response from %s with %s: %w", result.RemoteAddr, ctx.specLabel, err))
+		return 1
+	}
+
+	if *format == "json" {
+		return a.printSendJSON(result, string(framing), *timeout, payload, reqView, respView, *unsafe)
+	}
+	a.printSendDescribe(result, string(framing), *timeout, ctx.specLabel, reqView, respView, a.palette(mode, *format))
+	return 0
+}
+
+// readSendPayload resolves the message bytes to put on the wire. A JSON document
+// is packed with the active spec (like convert); a packed hex/raw message is
+// sent verbatim after decoding the input encoding.
+func (a *App) readSendPayload(target, raw, encoding string, ctx resolvedContext) ([]byte, error) {
+	source, err := messageio.ReadSource(target, raw, a.inputStdin(target, raw))
+	if err != nil {
+		return nil, err
+	}
+	if messageio.LooksLikeJSON(source) {
+		doc, err := messageio.ParseDocument(source)
+		if err != nil {
+			return nil, err
+		}
+		result, err := service.WriteMessage(doc, ctx.spec.MessageSpec)
+		if err != nil {
+			return nil, err
+		}
+		return result.Raw, nil
+	}
+	decoded, _, err := resolveInput(source, encoding)
+	return decoded, err
+}
+
+func (a *App) printSendDescribe(result service.SendResult, framing string, timeout time.Duration, specLabel string, req, resp service.ViewResult, pal render.Palette) {
+	writef(a.stdout, "%s %s\n", pal.Dim("Sent to:"), pal.Bold(result.RemoteAddr))
+	writef(a.stdout, "%s %s\n", pal.Dim("Framing:"), pal.Cyan(framing))
+	writef(a.stdout, "%s %s\n", pal.Dim("Spec:"), pal.Bold(specLabel))
+	writef(a.stdout, "%s %s\n", pal.Dim("Timeout:"), pal.Cyan(timeout.String()))
+	writef(a.stdout, "%s %d  %s %d  %s %s\n",
+		pal.Dim("Sent bytes:"), result.SentBytes,
+		pal.Dim("Received bytes:"), result.ReceivedBytes,
+		pal.Dim("RTT:"), pal.Cyan(result.RTT.Round(time.Microsecond).String()))
+
+	a.printSendSide("Request", req, pal)
+	a.printSendSide("Response", resp, pal)
+}
+
+// printSendSide prints the one-line summary and decoded fields for one side of
+// the exchange, mirroring the safe (masked) view the view command produces.
+func (a *App) printSendSide(title string, view service.ViewResult, pal render.Palette) {
+	writef(a.stdout, "\n%s\n", pal.BoldCyan(title+":"))
+	if view.Summary != "" {
+		writef(a.stdout, "  %s %s\n", pal.Dim("Summary:"), pal.Cyan(view.Summary))
+	}
+	if len(view.Decoded) == 0 {
+		return
+	}
+	for _, d := range view.Decoded {
+		writef(a.stdout, "  %s = %s  %s\n",
+			pal.Green(d.Path), pal.Yellow(render.SanitizeControl(d.Value)), pal.Cyan("→ "+d.Meaning))
+	}
+}
+
+func (a *App) printSendJSON(result service.SendResult, framing string, timeout time.Duration, payload []byte, req, resp service.ViewResult, unsafe bool) int {
+	// The packed wire bytes carry the PAN, track, and PIN in the clear, so the
+	// raw hex is withheld by default (it would defeat the masking applied to the
+	// request_view/response_view) and only included with --unsafe. The byte
+	// counts are not sensitive and always stay.
+	type payloadJSON struct {
+		Hex   string `json:"hex,omitempty"`
+		Bytes int    `json:"bytes"`
+	}
+	requestPayload := payloadJSON{Bytes: len(payload)}
+	responsePayload := payloadJSON{Bytes: len(result.Response)}
+	if unsafe {
+		requestHex, err := messageio.EncodeOutput(payload, "hex")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		responseHex, err := messageio.EncodeOutput(result.Response, "hex")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		requestPayload.Hex = string(requestHex)
+		responsePayload.Hex = string(responseHex)
+	}
+	out := struct {
+		RemoteAddr    string          `json:"remote_addr"`
+		Framing       string          `json:"framing"`
+		Timeout       string          `json:"timeout"`
+		RTTms         float64         `json:"rtt_ms"`
+		SentBytes     int             `json:"sent_bytes"`
+		ReceivedBytes int             `json:"received_bytes"`
+		Request       payloadJSON     `json:"request"`
+		Response      payloadJSON     `json:"response"`
+		RequestView   json.RawMessage `json:"request_view"`
+		ResponseView  json.RawMessage `json:"response_view"`
+	}{
+		RemoteAddr:    result.RemoteAddr,
+		Framing:       framing,
+		Timeout:       timeout.String(),
+		RTTms:         float64(result.RTT.Microseconds()) / 1000.0,
+		SentBytes:     result.SentBytes,
+		ReceivedBytes: result.ReceivedBytes,
+		Request:       requestPayload,
+		Response:      responsePayload,
+		RequestView:   json.RawMessage(req.Body),
+		ResponseView:  json.RawMessage(resp.Body),
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+	writef(a.stdout, "%s\n", data)
+	return 0
+}
+
 func (a *App) runValidate(args []string) int {
 	flagSet := newFlagSet("validate", a.stderr)
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
@@ -992,7 +1193,9 @@ func (a *App) runSample(args []string) int {
 	}
 
 	if strings.TrimSpace(*outputPath) != "" {
-		if err := os.WriteFile(filepath.Clean(*outputPath), data, 0o600); err != nil {
+		// The destination is an explicit --output flag chosen by the operator of
+		// this local CLI; there is no privilege boundary to traverse.
+		if err := os.WriteFile(filepath.Clean(*outputPath), data, 0o600); err != nil { //nolint:gosec // operator-supplied --output path on a local CLI
 			writeLine(a.stderr, err)
 			return 1
 		}
@@ -1136,6 +1339,7 @@ func (a *App) printRootHelp(w io.Writer) {
 	writeLine(w, "  diff       Compare two messages field by field")
 	writeLine(w, "  redact     Mask sensitive fields for safe sharing")
 	writeLine(w, "  convert    Convert between a packed message and a JSON document")
+	writeLine(w, "  send       Send a message over TCP and decode the response")
 	writeLine(w, "  validate   Check a message against the configured spec")
 	writeLine(w, "  doctor     Detect which built-in spec preset fits a message")
 	writeLine(w, "  specs      List the built-in spec presets")

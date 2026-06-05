@@ -44,6 +44,7 @@ iso8583tool sample
 iso8583tool view examples/basei/0110-auth-response.hex
 iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
 iso8583tool convert examples/basei/0100-auth-request.hex
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
 ```
 
 A message is read from a file, `-`, or stdin. Flags may come before or after the
@@ -56,6 +57,7 @@ view       Unpack and inspect a message
 diff       Compare two messages field by field
 redact     Mask PAN, track, and EMV sensitive data
 convert    Convert between a packed message and a JSON document
+send       Send a message over TCP and decode the response
 validate   Check that a message unpacks and report issues
 doctor     Detect which built-in spec preset fits a message
 specs      List the built-in spec presets
@@ -207,6 +209,93 @@ sensitive. A document is rejected when a path is ambiguous — the same path in
 both `fields` and `binary_fields`, or a parent that also has nested children
 (for example `55` together with `55.9F02`, or `48` with `48.1`) — because
 packing it would be order-dependent and silently lossy.
+
+## `send`
+
+Sends a single ISO 8583 message to a host over TCP and decodes the one response
+that comes back. It opens one connection, writes one framed request, reads one
+framed response, and reports the timing — there is no listener, session, retry,
+or sign-on logic, so it is a focused probe for a test endpoint or a simulator,
+not a switch.
+
+![send](./docs/demo-send.gif)
+
+The input is the same as the other commands: a JSON document (packed with the
+active spec before it goes on the wire), or an already-packed hex/raw message
+(sent verbatim). It is read from a file, `-`, or stdin, or given inline with
+`--raw`.
+
+**Framing.** ISO 8583 over TCP needs a length header so the peer knows where a
+message ends. `--framing` selects the convention, and the same one is used for
+both the request and the response:
+
+- `2byte-binary` (default) — a 2-byte big-endian length prefix.
+- `4digit-ascii` — a 4-digit ASCII length header (`0094…`).
+- `none` — no header; the response is read until the peer closes the connection
+  or `--timeout` is reached.
+
+`--timeout` (default `5s`) bounds the connect and the read, so a host that never
+answers fails with a clear error and a non-zero exit instead of hanging.
+
+**Masking.** The request and response are displayed with the same safe defaults
+as [`view`](#view): the PAN, track, PIN, the EMV tags that carry them, and a PAN
+embedded in a free-form private field are masked. Pass `--unsafe` to show raw
+values for local fault analysis. Unlike `convert`, `send` never reveals
+cardholder data by default.
+
+```shell
+# Send a packed 0800 network echo and decode the 0810 reply (default framing).
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
+
+# Pack a JSON document with the active spec, then send it with a 4-digit header.
+iso8583tool send 127.0.0.1:8583 examples/basei/0100-auth-request.json --framing 4digit-ascii
+
+# Read the message from stdin and emit machine-readable JSON for jq.
+iso8583tool sample 0800-network-echo --format hex \
+  | iso8583tool send 127.0.0.1:8583 - --format json | jq '.response_view.mti'
+```
+
+```text
+$ iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
+Sent to: 127.0.0.1:8583
+Framing: 2byte-binary
+Spec: basei-starter
+Timeout: 5s
+Sent bytes: 96  Received bytes: 108  RTT: 294µs
+
+Request:
+  Summary: 0800 · Echo test · STAN 654321 · TERMNET1
+  0 = 0800  → Network management Request from Acquirer (ISO8583:1987)
+  70 = 301  → Echo test
+
+Response:
+  Summary: 0810 · Approved · Echo test · STAN 654321 · TERMNET1
+  0 = 0810  → Network management Response from Acquirer (ISO8583:1987)
+  39 = 00  → Approved
+  70 = 301  → Echo test
+```
+
+`--format json` emits a machine-readable record: `remote_addr`, `framing`,
+`timeout`, `rtt_ms`, `sent_bytes`, `received_bytes`, the `request` / `response`
+(byte count, plus the raw wire `hex` only under `--unsafe`), and the decoded
+`request_view` / `response_view` (the same shape as `view --format json`). All of
+it is masked by default — the raw packed bytes carry the PAN in the clear, so
+their hex is withheld unless you pass `--unsafe`.
+
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant Tool as iso8583tool send
+    participant Host as ISO8583 Host
+
+    Operator->>Tool: send HOST:PORT MESSAGE [--framing ...]
+    Note over Tool: pack JSON with the active spec<br/>(or use the packed hex/raw as-is)
+    Tool->>Host: TCP connect
+    Tool->>Host: framed request (length header + message)
+    Host-->>Tool: framed response
+    Note over Tool: unpack with the active spec,<br/>decode codes, mask cardholder data
+    Tool-->>Operator: describe / JSON (RTT, byte counts, request & response views)
+```
 
 ## `validate`
 
