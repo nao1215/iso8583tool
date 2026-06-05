@@ -44,4 +44,24 @@ Describe 'iso8583tool spec87bcd-starter preset'
     The status should be success
     The output should include '"32": "123456"'
   End
+
+  It 'packs a secondary numeric field (71) as packed BCD, not ASCII'
+    # "1234" must pack to the two BCD bytes 0x12 0x34 (hex "1234"), never the four
+    # ASCII bytes 0x31..0x34 (hex "31323334").
+    printf '%s' '{"mti":"0800","fields":{"11":"123456","70":"301","71":"1234"}}' > "$WORK/f71.json"
+    When run iso8583tool convert "$WORK/f71.json" --to hex --spec "$PACKED_BCD_SPEC"
+    The status should be success
+    The output should include '1234'
+    The output should not include '31323334'
+  End
+
+  It 'round-trips secondary numeric fields (74, 99, 100)'
+    printf '%s' '{"mti":"0800","fields":{"11":"123456","70":"301","74":"0000000001","99":"12345678901","100":"98765432109"}}' > "$WORK/sec.json"
+    iso8583tool convert "$WORK/sec.json" --to hex --spec "$PACKED_BCD_SPEC" > "$WORK/sec.hex"
+    When run iso8583tool convert "$WORK/sec.hex" --spec "$PACKED_BCD_SPEC" --encoding hex --to json
+    The status should be success
+    The output should include '"74": "0000000001"'
+    The output should include '"99": "12345678901"'
+    The output should include '"100": "98765432109"'
+  End
 End

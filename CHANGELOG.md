@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `spec87bcd-starter` preset now packs every numeric secondary-bitmap field
+  as packed BCD, matching its packed-BCD intent. The message-number, date-action,
+  count, amount, original/replacement-amount, and net-settlement fields
+  (71-90, 93-95, 97) and the numeric institution-identification fields (99, 100)
+  previously kept an ASCII payload (`"1234"` packed as `0x31..0x34` instead of
+  `0x12 0x34`); they now encode and round-trip as BCD like the primary numeric
+  fields.
 - `view`, `validate`, `diff`, and `redact` text output now escape control/ANSI
   bytes carried in a field value (caret notation, like `cat -v`: ESC becomes
   `^[`), so a poisoned message — for example a terminal id holding an
