@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate --strict` now classifies all eight MTI functions and covers the
+  remaining message classes, so a hollow message no longer passes silently. A
+  notification (`0140`, `0240`, `0440`, ...) and instruction (`0160`, `0260`,
+  `0460`, ...) are held to the same core requirements as a request; a
+  notification ack and instruction ack (`0150`/`0170`, `0250`/`0270`, ...) need a
+  response code; file-action messages (`0300`-`0370`) need a file name or action
+  code; and a reversal request/advice (`0400`/`0420`/`0440`/`0460`) now also
+  requires a PAN source (field 2, 35, or 45), tying it to the original
+  transaction. Reconciliation, administrative, and fee-collection messages
+  (`0500`/`0600`/`0700`) are recognized but their per-field rules are not yet
+  modeled, so strict now emits an explicit warning instead of reporting them as
+  fully validated.
+
 - `validate` no longer prints an empty `Decoded Fields:` heading when the only
   decoded value is the MTI (which is already shown on its own line). The section
   appears only when at least one non-MTI field was decoded.

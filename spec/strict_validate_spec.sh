@@ -60,4 +60,39 @@ Describe 'iso8583tool validate --strict advice and network rules'
     The status should be success
     The output should include 'ok'
   End
+
+  It 'fails a hollow authorization notification (0140)'
+    hex=$(hollow 0140 '{"mti":"0140","fields":{"11":"123456"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be failure
+    The output should include 'failed'
+  End
+
+  It 'fails a hollow financial instruction ack (0270)'
+    hex=$(hollow 0270 '{"mti":"0270","fields":{"11":"123456"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be failure
+    The output should include 'failed'
+  End
+
+  It 'fails a hollow file-action request (0300)'
+    hex=$(hollow 0300 '{"mti":"0300","fields":{"11":"123456"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be failure
+    The output should include 'failed'
+  End
+
+  It 'requires a PAN source for a reversal request (0400)'
+    hex=$(hollow 0400 '{"mti":"0400","fields":{"4":"000000001000","7":"0605123456","11":"123456","90":"020022334406041301050000000000000000000000"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be failure
+    The output should include 'PAN source'
+  End
+
+  It 'warns that reconciliation (0500) rules are not implemented'
+    hex=$(hollow 0500 '{"mti":"0500","fields":{"11":"123456"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be success
+    The output should include 'class 5'
+  End
 End

@@ -204,9 +204,19 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	}
 
 	class, function := mti[1], mti[2]
-	isRequest := function == '0'
+	// Classify the MTI function. A request, advice, notification, or instruction
+	// reports or instructs a transaction, so it carries the transaction's core
+	// data elements; a response, advice response, or either acknowledgement
+	// answers one, so it carries a response/action code. Modeling all eight
+	// functions keeps a hollow notification/instruction/ack from passing strict.
+	carriesTransaction := function == '0' || function == '2' || function == '4' || function == '6'
+	isAcknowledgement := function == '1' || function == '3' || function == '5' || function == '7'
 	isResponse := function == '1' || function == '3'
-	isAdvice := function == '2'
+	requirePANSource := func(context string) {
+		if !hasAny(2, 35, 45) {
+			add(SeverityError, "2", "strict: "+context+" needs a PAN source (field 2, 35, or 45)")
+		}
+	}
 
 	// The system trace audit number (field 11) ties a message to its pair.
 	require(11, "every BASE I message")
@@ -214,47 +224,92 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	switch class {
 	case '1', '2': // authorization / financial
 		switch {
-		case isRequest || isAdvice:
-			// An advice reports a transaction that already happened, so it carries
-			// the same core data elements as the request it stands in for.
-			context := "an authorization/financial request"
-			if isAdvice {
-				context = "an authorization/financial advice"
-			}
+		case carriesTransaction:
+			context := functionContext("authorization/financial", function)
 			require(3, context+" (processing code)")
 			require(4, context+" (amount)")
 			require(7, context+" (transmission date/time)")
-			if !hasAny(2, 35, 45) {
-				add(SeverityError, "2", "strict: "+context+" needs a PAN source (field 2, 35, or 45)")
-			}
+			requirePANSource(context)
 			recommend(37, "card messages (retrieval reference number)")
-		case isResponse:
+		case isAcknowledgement:
 			require(39, "an authorization/financial response (response code)")
-			if rc, err := msg.GetString(39); err == nil && isApprovalCode(rc) && !has(38) {
-				add(SeverityWarning, "38", "strict: an approved response (field 39="+strings.TrimSpace(rc)+") usually carries an authorization identification (field 38)")
+			if isResponse {
+				if rc, err := msg.GetString(39); err == nil && isApprovalCode(rc) && !has(38) {
+					add(SeverityWarning, "38", "strict: an approved response (field 39="+strings.TrimSpace(rc)+") usually carries an authorization identification (field 38)")
+				}
 			}
 			recommend(37, "card messages (retrieval reference number)")
+		}
+	case '3': // file action
+		switch {
+		case carriesTransaction:
+			require(101, functionContext("file-action", function)+" (file name)")
+		case isAcknowledgement:
+			require(39, "a file-action response (action code)")
 		}
 	case '4': // reversal
 		switch {
-		case isRequest || isAdvice:
-			require(4, "a reversal (amount)")
-			require(7, "a reversal (transmission date/time)")
-			require(90, "a reversal (original data elements)")
-		case isResponse:
+		case carriesTransaction:
+			context := functionContext("reversal", function)
+			require(4, context+" (amount)")
+			require(7, context+" (transmission date/time)")
+			require(90, context+" (original data elements)")
+			requirePANSource(context)
+		case isAcknowledgement:
 			require(39, "a reversal response (response code)")
 		}
 	case '8': // network management
-		// Every network-management message (request, advice, response, advice
-		// response) identifies its purpose with the network-management code in
-		// field 70, so it is required across the board.
+		// Every network-management message identifies its purpose with the
+		// network-management code in field 70, so it is required across the board.
 		require(70, "a network-management message (network management code)")
-		if isResponse {
+		if isAcknowledgement {
 			require(39, "a network-management response (response code)")
 		}
+	case '5', '6', '7': // reconciliation / administrative / fee collection
+		// These classes are recognized, but their per-field business rules are not
+		// yet modeled. Flag that strict did not fully validate the message, so a
+		// hollow one is not silently reported as fully checked.
+		add(SeverityWarning, "0", "strict: semantic rules for MTI class "+string(class)+" ("+className(class)+") are not implemented; only structural checks were applied")
+	default:
+		add(SeverityWarning, "0", "strict: unrecognized MTI class "+string(class)+"; only structural checks were applied")
 	}
 
 	return issues
+}
+
+// functionContext renders a human label for an MTI class/function pair, e.g.
+// "an authorization/financial advice" or "a reversal instruction".
+func functionContext(family string, function byte) string {
+	article := "a "
+	switch family[0] {
+	case 'a', 'e', 'i', 'o', 'u':
+		article = "an "
+	}
+	switch function {
+	case '2':
+		return article + family + " advice"
+	case '4':
+		return article + family + " notification"
+	case '6':
+		return article + family + " instruction"
+	default:
+		return article + family + " request"
+	}
+}
+
+// className names the MTI message classes that are recognized but not yet
+// modeled with per-field rules.
+func className(class byte) string {
+	switch class {
+	case '5':
+		return "reconciliation"
+	case '6':
+		return "administrative"
+	case '7':
+		return "fee collection"
+	default:
+		return "unknown"
+	}
 }
 
 // isApprovalCode reports whether a BASE I response code (field 39) is an
