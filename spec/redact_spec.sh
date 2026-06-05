@@ -50,4 +50,23 @@ Describe 'iso8583tool redact'
     The status should be success
     The output should not include '4111111111111111'
   End
+
+  Describe 'auto-detected input encoding'
+    BeforeEach 'make_workdir; write_kanmu_like_message "$WORK/message.bin"'
+    AfterEach 'remove_workdir'
+
+    # redact must default to --encoding auto like the other commands, so a raw
+    # *.bin capture is read without an explicit --encoding raw.
+    It 'redacts a raw binary capture without --encoding'
+      When run iso8583tool redact "$WORK/message.bin" --spec "$PACKED_BCD_SPEC"
+      The status should be success
+      The output should include '"mti"'
+    End
+
+    It 'still masks the PAN in a raw binary capture'
+      When run sh -c '"$ISO_BIN" redact "$1" --spec "$2" | jq -r ".fields[\"2\"]"' sh "$WORK/message.bin" "$PACKED_BCD_SPEC"
+      The status should be success
+      The output should include '*'
+    End
+  End
 End

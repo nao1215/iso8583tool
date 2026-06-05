@@ -365,7 +365,7 @@ func (a *App) runRedact(args []string) int {
 	specName := flagSet.String("spec", "", "spec preset or JSON spec path")
 	configPath := flagSet.String("config", "", "path to a JSON config (defaults + extension catalog)")
 	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
-	encoding := flagSet.String("encoding", "hex", "input encoding: hex or raw")
+	encoding := flagSet.String("encoding", "auto", "input encoding: auto, hex, or raw")
 	format := flagSet.String("format", "json", "output format: json or text")
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")

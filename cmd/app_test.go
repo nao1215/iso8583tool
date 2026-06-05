@@ -295,6 +295,55 @@ func TestRedactTextFieldOrder(t *testing.T) {
 	}
 }
 
+func TestRedactAutoDetectsRawBinary(t *testing.T) {
+	t.Parallel()
+
+	// redact must default to --encoding auto like view/validate/convert/diff, so
+	// a raw-binary *.bin capture is read without an explicit --encoding raw. With
+	// the old "hex" default this failed with "encoding/hex: invalid byte".
+	raw := []byte{
+		0x01, 0x00, 0x70, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x10, 0x40, 0x19, 0x24, 0x99, 0x99, 0x99, 0x99, 0x99, 0x32,
+		0x73, 0x27, 0x00, 0x00, 0x00, 0x00, 0x11, 0x38, 0x22, 0x04,
+	}
+	path := filepath.Join(t.TempDir(), "message.bin")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("write bin: %v", err)
+	}
+
+	code, out, errOut := runApp("", "redact", path, "--spec", "spec87bcd-starter", "--no-color")
+	if code != 0 {
+		t.Fatalf("redact on raw .bin failed: %d\nstdout=%s\nstderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"mti"`) {
+		t.Fatalf("redact .bin output should be a JSON document:\n%s", out)
+	}
+	// The PAN (99...) must be masked, never echoed in full.
+	if strings.Contains(out, "9999999999") {
+		t.Fatalf("redact must not leak the raw PAN:\n%s", out)
+	}
+}
+
+func TestRedactAutoDetectsRawAsciiAllNumeric(t *testing.T) {
+	t.Parallel()
+
+	// An all-numeric raw ASCII message is, byte-for-byte, a valid even-length hex
+	// string. redact's auto default must not silently read it as packed hex.
+	raw := "0800022000000000000000000000000000000604161616654321"
+	path := filepath.Join(t.TempDir(), "ascii.bin")
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatalf("write bin: %v", err)
+	}
+
+	code, out, errOut := runApp("", "redact", path, "--no-color")
+	if code != 0 {
+		t.Fatalf("redact on raw ASCII failed: %d\nstdout=%s\nstderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"0800"`) {
+		t.Fatalf("redact should decode the 0800 MTI from the raw reading:\n%s", out)
+	}
+}
+
 func TestHelpUsageStrings(t *testing.T) {
 	t.Parallel()
 
