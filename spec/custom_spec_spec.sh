@@ -5,6 +5,11 @@
 # importer does not wire up by default (Hex, Track1, Track3, IndexTag) and tag
 # blocks that omit "sort" must load with --spec PATH instead of failing with a
 # "no constructor" / "unknown sort function" error.
+#
+# Most specs below define only the field under test, so the bundled example
+# message does not unpack under them and the command exits non-zero. That is
+# expected: the point of each assertion is that the failure is NOT the import
+# error, which proves the spec itself loaded.
 
 Describe 'iso8583tool custom JSON spec import'
   Include "$SHELLSPEC_SPECDIR/spec_helper.sh"
