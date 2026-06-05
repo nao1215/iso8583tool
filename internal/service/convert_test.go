@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nao1215/iso8583tool/internal/basei"
@@ -108,5 +109,42 @@ func TestConvertUnknownTagEditable(t *testing.T) {
 	}
 	if string(repacked.Raw) != string(packed.Raw) {
 		t.Fatal("round-trip with an unknown tag changed the packed bytes")
+	}
+}
+
+// TestWriteResultFieldCountTopLevel checks that WriteResult.FieldCount reports
+// the number of top-level ISO data fields (matching doctor's field_count),
+// not one entry per TLV subtag plus the MTI.
+func TestWriteResultFieldCountTopLevel(t *testing.T) {
+	t.Parallel()
+
+	spec, err := messagespec.Load(".", config.Default())
+	if err != nil {
+		t.Fatalf("messagespec.Load: %v", err)
+	}
+	doc := basei.AuthRequest()
+
+	// Expected count: distinct first-segment field ids across both maps.
+	want := map[string]struct{}{}
+	for p := range doc.Fields {
+		want[strings.SplitN(p, ".", 2)[0]] = struct{}{}
+	}
+	for p := range doc.BinaryFields {
+		want[strings.SplitN(p, ".", 2)[0]] = struct{}{}
+	}
+
+	packed, err := WriteMessage(doc, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("WriteMessage: %v", err)
+	}
+	if packed.FieldCount != len(want) {
+		t.Fatalf("FieldCount = %d, want %d (distinct top-level ids)", packed.FieldCount, len(want))
+	}
+
+	// It must also agree with doctor's field_count for the same bytes.
+	for _, c := range DiagnoseSpec(packed.Raw).Candidates {
+		if c.Preset == "basei-starter" && c.FieldCount != packed.FieldCount {
+			t.Fatalf("doctor field_count %d != convert FieldCount %d", c.FieldCount, packed.FieldCount)
+		}
 	}
 }
