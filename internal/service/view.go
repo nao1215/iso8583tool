@@ -191,7 +191,9 @@ func Summarize(msg *iso8583.Message) string {
 	if v, ok := get(41); ok && strings.TrimSpace(v) != "" {
 		parts = append(parts, strings.TrimSpace(v))
 	}
-	return strings.Join(parts, " · ")
+	// Field 41 (and any free-text part) can carry control/ANSI bytes; escape them
+	// so the one-line summary is safe to print in a text view.
+	return render.SanitizeControl(strings.Join(parts, " · "))
 }
 
 // lookupPath resolves a dot-path to its leaf field, returning the spec
@@ -566,6 +568,9 @@ func colorizeFieldLine(line, parentPrefix string, pal render.Palette, mask func(
 	if mask != nil {
 		displayValue = mask(path, value)
 	}
+	// Escape any control/ANSI bytes so a poisoned field value cannot drive the
+	// terminal when the describe output is printed.
+	displayValue = render.SanitizeControl(displayValue)
 	rendered := coloredLabel + ": " + pal.Yellow(displayValue)
 	// Annotate from the original value: a masked value has no meaning, and a
 	// non-sensitive field is returned unchanged by mask anyway.

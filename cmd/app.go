@@ -337,15 +337,17 @@ func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
 		if c.Path == "mti" {
 			label = "MTI"
 		}
+		before := render.SanitizeControl(c.Before)
+		after := render.SanitizeControl(c.After)
 		writef(a.stdout, "%s %s\n", pal.Bold(label), string(c.Kind))
 		switch c.Kind {
 		case service.DiffChanged:
-			writef(a.stdout, "%s\n", pal.Red("- "+c.Before))
-			writef(a.stdout, "%s\n", pal.Green("+ "+c.After))
+			writef(a.stdout, "%s\n", pal.Red("- "+before))
+			writef(a.stdout, "%s\n", pal.Green("+ "+after))
 		case service.DiffRemoved:
-			writef(a.stdout, "%s\n", pal.Red("- "+c.Before))
+			writef(a.stdout, "%s\n", pal.Red("- "+before))
 		case service.DiffAdded:
-			writef(a.stdout, "%s\n", pal.Green("+ "+c.After))
+			writef(a.stdout, "%s\n", pal.Green("+ "+after))
 		}
 	}
 	a.printMissingFilters(result.MissingFilters, pal)
@@ -448,6 +450,7 @@ func (a *App) printRedacted(doc messageio.Document, paths []string, pal render.P
 		if !ok {
 			v = doc.BinaryFields[k]
 		}
+		v = render.SanitizeControl(v)
 		if redactedSet[k] {
 			writef(a.stdout, "%s = %s\n", pal.Green("F"+k), pal.Yellow(v))
 			continue
@@ -1178,7 +1181,7 @@ func (a *App) printValidationReport(report service.ValidationReport, pal render.
 		writef(a.stdout, "\n%s\n", pal.BoldCyan("Decoded Fields:"))
 		for _, d := range decodedFields {
 			writef(a.stdout, "- %s = %s  %s\n",
-				pal.Green(d.Path), pal.Yellow(d.Value), pal.Cyan("→ "+d.Meaning))
+				pal.Green(d.Path), pal.Yellow(render.SanitizeControl(d.Value)), pal.Cyan("→ "+d.Meaning))
 		}
 	}
 	if len(report.Issues) > 0 {
