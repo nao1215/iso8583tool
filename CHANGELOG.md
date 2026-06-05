@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Help requested on the success path now prints to stdout instead of stderr:
+  `--help`, `help <command>`, `<command> --help`, and the no-argument overview.
+  Error-path usage (an unknown command, a bad flag, or trailing arguments) still
+  goes to stderr with a non-zero exit, matching common CLI convention.
+
 - Sensitive-data masking now covers cases it previously missed, across `view`,
   `redact`, and `diff`:
   - A PAN or track carried in a binary (hex-encoded) field — for example a

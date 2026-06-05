@@ -60,7 +60,7 @@ func NewApp(stdout, stderr io.Writer, stdin io.Reader, workDir string) *App {
 
 func (a *App) Run(args []string) int {
 	if len(args) == 0 {
-		a.printRootHelp()
+		a.printRootHelp(a.stdout)
 		return 0
 	}
 
@@ -70,15 +70,15 @@ func (a *App) Run(args []string) int {
 		if len(args) > 1 {
 			return a.runHelp(args[1:])
 		}
-		a.printRootHelp()
+		a.printRootHelp(a.stdout)
 		return 0
 	case "-h", "--help":
 		if len(args) > 1 {
 			writef(a.stderr, "%q takes no arguments; use \"iso8583tool help <command>\"\n\n", args[0])
-			a.printRootHelp()
+			a.printRootHelp(a.stderr)
 			return 1
 		}
-		a.printRootHelp()
+		a.printRootHelp(a.stdout)
 		return 0
 	case "view":
 		return a.runView(args[1:])
@@ -99,14 +99,14 @@ func (a *App) Run(args []string) int {
 	case "version", "-v", "--version":
 		if len(args) > 1 {
 			writef(a.stderr, "%q takes no arguments\n\n", args[0])
-			a.printRootHelp()
+			a.printRootHelp(a.stderr)
 			return 1
 		}
 		writef(a.stdout, "iso8583tool %s\n", resolveVersion())
 		return 0
 	default:
 		writef(a.stderr, "unknown command: %s\n\n", args[0])
-		a.printRootHelp()
+		a.printRootHelp(a.stderr)
 		return 1
 	}
 }
@@ -124,14 +124,14 @@ func (a *App) runHelp(args []string) int {
 	case "help", "version":
 		if len(rest) > 0 {
 			writef(a.stderr, "%q takes no arguments\n\n", name)
-			a.printRootHelp()
+			a.printRootHelp(a.stderr)
 			return 1
 		}
-		a.printRootHelp()
+		a.printRootHelp(a.stdout)
 		return 0
 	default:
 		writef(a.stderr, "unknown command: %s\n\n", name)
-		a.printRootHelp()
+		a.printRootHelp(a.stderr)
 		return 1
 	}
 }
@@ -149,13 +149,13 @@ func (a *App) runView(args []string) int {
 	var filters multiFlag
 	flagSet.Var(&filters, "filter", "only show this field path (repeatable, e.g. --filter 39 --filter 55.9F02)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Inspect an ISO8583 message with the configured spec.")
-		writeLine(a.stderr, "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding auto|hex|raw] [--format describe|json] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
-		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted.")
-		writeLine(a.stderr, "Cardholder data is masked by default; pass --unsafe to show raw values.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Inspect an ISO8583 message with the configured spec.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool view [MESSAGE|-] [--filter PATH ...] [--unsafe] [--encoding auto|hex|raw] [--format describe|json] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(flagSet.Output(), "Cardholder data is masked by default; pass --unsafe to show raw values.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -238,13 +238,13 @@ func (a *App) runDiff(args []string) int {
 	var filters multiFlag
 	flagSet.Var(&filters, "filter", "only compare this field path (repeatable)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Compare two ISO8583 messages field by field.")
-		writeLine(a.stderr, "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--encoding auto|hex|raw] [--format text|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
-		writeLine(a.stderr, "Either BEFORE or AFTER may be '-' to read that side from stdin.")
-		writeLine(a.stderr, "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Compare two ISO8583 messages field by field.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool diff BEFORE AFTER [--filter PATH ...] [--encoding auto|hex|raw] [--format text|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Either BEFORE or AFTER may be '-' to read that side from stdin.")
+		writeLine(flagSet.Output(), "Values are masked like view by default; pass --unsafe to show raw cardholder data.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	if flagSet.NArg() != 2 {
@@ -370,13 +370,13 @@ func (a *App) runRedact(args []string) int {
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Mask cardholder data and secrets so a message can be shared safely.")
-		writeLine(a.stderr, "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--color auto|always|never]")
-		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
-		writeLine(a.stderr, "Output is a sanitized document for sharing, not a re-packable message.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Mask cardholder data and secrets so a message can be shared safely.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
+		writeLine(flagSet.Output(), "Output is a sanitized document for sharing, not a re-packable message.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -467,13 +467,13 @@ func (a *App) runConvert(args []string) int {
 	encoding := flagSet.String("encoding", "auto", "message-side encoding: auto, hex, or raw")
 	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Convert between a packed message and a JSON document (direction auto-detected).")
-		writeLine(a.stderr, "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
-		writeLine(a.stderr, "JSON input is packed to a message; a message is unpacked to a JSON document.")
-		writeLine(a.stderr, "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Convert between a packed message and a JSON document (direction auto-detected).")
+		writeLine(flagSet.Output(), "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
+		writeLine(flagSet.Output(), "JSON input is packed to a message; a message is unpacked to a JSON document.")
+		writeLine(flagSet.Output(), "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -593,13 +593,13 @@ func (a *App) runValidate(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(a.stderr, "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
-		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
-		writeLine(a.stderr, "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Validate that a message can be unpacked and highlight extension-field strategy.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
+		writeLine(flagSet.Output(), "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -656,14 +656,14 @@ func (a *App) runDoctor(args []string) int {
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "Detect which built-in spec preset fits a message.")
-		writeLine(a.stderr, "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
-		writeLine(a.stderr, "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
-		writeLine(a.stderr, "The input encoding is auto-detected (hex text vs raw bytes); override with --encoding.")
-		writeLine(a.stderr, "Tries every preset and recommends the best fit; confirm the result with view.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "Detect which built-in spec preset fits a message.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
+		writeLine(flagSet.Output(), "The input encoding is auto-detected (hex text vs raw bytes); override with --encoding.")
+		writeLine(flagSet.Output(), "Tries every preset and recommends the best fit; confirm the result with view.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	target := flagSet.Arg(0)
@@ -821,12 +821,12 @@ func (a *App) runSpecs(args []string) int {
 	flagSet := newFlagSet("specs", a.stderr)
 	format := flagSet.String("format", "text", "output format: text or json")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "List the built-in spec presets selectable with --spec.")
-		writeLine(a.stderr, "Usage: iso8583tool specs [--format text|json]")
-		writeLine(a.stderr, "Any moov-io/iso8583 JSON spec path also works as --spec.")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "List the built-in spec presets selectable with --spec.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool specs [--format text|json]")
+		writeLine(flagSet.Output(), "Any moov-io/iso8583 JSON spec path also works as --spec.")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	if flagSet.NArg() > 0 {
@@ -887,11 +887,11 @@ func (a *App) runSample(args []string) int {
 	format := flagSet.String("format", "json", "sample format: json or hex")
 	outputPath := flagSet.String("output", "", "path to write the exported sample")
 	flagSet.Usage = func() {
-		writeLine(a.stderr, "List or export built-in BASE I starter samples.")
-		writeLine(a.stderr, "Usage: iso8583tool sample [NAME] [--format json|hex] [--output PATH]")
-		printFlagDefaults(a.stderr, flagSet)
+		writeLine(flagSet.Output(), "List or export built-in BASE I starter samples.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool sample [NAME] [--format json|hex] [--output PATH]")
+		printFlagDefaults(flagSet.Output(), flagSet)
 	}
-	if code, ok := parseArgs(flagSet, reorderArgs(flagSet, args)); !ok {
+	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
 	if flagSet.NArg() > 1 {
@@ -1041,27 +1041,27 @@ func strategyColor(pal render.Palette, strategy string) string {
 	}
 }
 
-func (a *App) printRootHelp() {
-	writeLine(a.stderr, "BASE I oriented ISO8583 viewer, converter, and validator.")
-	writeLine(a.stderr, "")
-	writeLine(a.stderr, "Usage:")
-	writeLine(a.stderr, "  iso8583tool <command> [arguments] [flags]")
-	writeLine(a.stderr, "")
-	writeLine(a.stderr, "Commands:")
-	writeLine(a.stderr, "  view       Unpack and inspect a message")
-	writeLine(a.stderr, "  diff       Compare two messages field by field")
-	writeLine(a.stderr, "  redact     Mask sensitive fields for safe sharing")
-	writeLine(a.stderr, "  convert    Convert between a packed message and a JSON document")
-	writeLine(a.stderr, "  validate   Check a message against the configured spec")
-	writeLine(a.stderr, "  doctor     Detect which built-in spec preset fits a message")
-	writeLine(a.stderr, "  specs      List the built-in spec presets")
-	writeLine(a.stderr, "  sample     List or export built-in BASE I starter samples")
-	writeLine(a.stderr, "  version    Print the version")
-	writeLine(a.stderr, "  help       Show command help")
-	writeLine(a.stderr, "")
-	writeLine(a.stderr, "Messages can be read from a file, '-', or stdin. Use --spec for a preset")
-	writeLine(a.stderr, "or JSON spec path, and --config PATH for extension catalogs/default overrides.")
-	writeLine(a.stderr, "Not sure which spec a capture uses? Run \"iso8583tool doctor MESSAGE\".")
+func (a *App) printRootHelp(w io.Writer) {
+	writeLine(w, "BASE I oriented ISO8583 viewer, converter, and validator.")
+	writeLine(w, "")
+	writeLine(w, "Usage:")
+	writeLine(w, "  iso8583tool <command> [arguments] [flags]")
+	writeLine(w, "")
+	writeLine(w, "Commands:")
+	writeLine(w, "  view       Unpack and inspect a message")
+	writeLine(w, "  diff       Compare two messages field by field")
+	writeLine(w, "  redact     Mask sensitive fields for safe sharing")
+	writeLine(w, "  convert    Convert between a packed message and a JSON document")
+	writeLine(w, "  validate   Check a message against the configured spec")
+	writeLine(w, "  doctor     Detect which built-in spec preset fits a message")
+	writeLine(w, "  specs      List the built-in spec presets")
+	writeLine(w, "  sample     List or export built-in BASE I starter samples")
+	writeLine(w, "  version    Print the version")
+	writeLine(w, "  help       Show command help")
+	writeLine(w, "")
+	writeLine(w, "Messages can be read from a file, '-', or stdin. Use --spec for a preset")
+	writeLine(w, "or JSON spec path, and --config PATH for extension catalogs/default overrides.")
+	writeLine(w, "Not sure which spec a capture uses? Run \"iso8583tool doctor MESSAGE\".")
 }
 
 func (a *App) printValidationReport(report service.ValidationReport, pal render.Palette) {
@@ -1209,6 +1209,34 @@ func parseArgs(flagSet *flag.FlagSet, args []string) (int, bool) {
 		return 1, false
 	}
 	return 0, true
+}
+
+// helpRequested reports whether args explicitly ask for help (a standalone -h or
+// --help before any "--" terminator).
+func helpRequested(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "-h" || a == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFlags reorders args and parses them. When help is explicitly requested it
+// prints the command usage to stdout and returns success (a successful help
+// request is not an error); flag-parsing errors still go to stderr with a
+// non-zero code. Command Usage funcs write to flagSet.Output(), which this sets
+// to stdout for the help case.
+func (a *App) parseFlags(flagSet *flag.FlagSet, args []string) (int, bool) {
+	if helpRequested(args) {
+		flagSet.SetOutput(a.stdout)
+		flagSet.Usage()
+		return 0, false
+	}
+	return parseArgs(flagSet, reorderArgs(flagSet, args))
 }
 
 func printFlagDefaults(w io.Writer, flagSet *flag.FlagSet) {

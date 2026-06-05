@@ -28,14 +28,16 @@ func TestVersionAndHelp(t *testing.T) {
 	if code, out, _ := runApp("", "version"); code != 0 || !strings.Contains(out, "iso8583tool") {
 		t.Fatalf("version: code=%d out=%q", code, out)
 	}
-	if code, _, errOut := runApp(""); code != 0 || !strings.Contains(errOut, "Commands:") {
-		t.Fatalf("no-args help: code=%d err=%q", code, errOut)
+	// Success-path help goes to stdout (exit 0).
+	if code, out, _ := runApp(""); code != 0 || !strings.Contains(out, "Commands:") {
+		t.Fatalf("no-args help: code=%d out=%q", code, out)
 	}
+	// An unknown command is an error: usage goes to stderr (exit 1).
 	if code, _, errOut := runApp("", "frobnicate"); code != 1 || !strings.Contains(errOut, "unknown command") {
 		t.Fatalf("unknown command: code=%d err=%q", code, errOut)
 	}
-	if code, _, errOut := runApp("", "help", "convert"); code != 0 || !strings.Contains(errOut, "convert") {
-		t.Fatalf("help convert: code=%d err=%q", code, errOut)
+	if code, out, _ := runApp("", "help", "convert"); code != 0 || !strings.Contains(out, "convert") {
+		t.Fatalf("help convert: code=%d out=%q", code, out)
 	}
 }
 
@@ -296,7 +298,7 @@ func TestRedactTextFieldOrder(t *testing.T) {
 func TestHelpUsageStrings(t *testing.T) {
 	t.Parallel()
 
-	_, _, redactHelp := runApp("", "help", "redact")
+	_, redactHelp, _ := runApp("", "help", "redact")
 	if !strings.Contains(redactHelp, "[--raw HEX]") {
 		t.Fatalf("redact usage should document --raw:\n%s", redactHelp)
 	}
@@ -304,12 +306,12 @@ func TestHelpUsageStrings(t *testing.T) {
 		t.Fatalf("redact usage should document --color:\n%s", redactHelp)
 	}
 
-	_, _, validateHelp := runApp("", "help", "validate")
+	_, validateHelp, _ := runApp("", "help", "validate")
 	if !strings.Contains(validateHelp, "[--raw HEX]") {
 		t.Fatalf("validate usage should document --raw:\n%s", validateHelp)
 	}
 
-	_, _, convertHelp := runApp("", "help", "convert")
+	_, convertHelp, _ := runApp("", "help", "convert")
 	if strings.Contains(convertHelp, "packed BASE I message") {
 		t.Fatalf("convert help should not imply BASE I is the only spec:\n%s", convertHelp)
 	}
@@ -646,8 +648,8 @@ func TestRootHelpVersionRejectExtraArgs(t *testing.T) {
 	if code, out, _ := runApp("", "--version"); code != 0 || !strings.Contains(out, "iso8583tool") {
 		t.Fatal("--version should print the version")
 	}
-	if code, _, errOut := runApp("", "help", "view"); code != 0 || !strings.Contains(errOut, "Usage: iso8583tool view") {
-		t.Fatalf("help view should still describe view: code=%d err=%q", code, errOut)
+	if code, out, _ := runApp("", "help", "view"); code != 0 || !strings.Contains(out, "Usage: iso8583tool view") {
+		t.Fatalf("help view should still describe view: code=%d out=%q", code, out)
 	}
 }
 
