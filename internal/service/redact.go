@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/moov-io/iso8583"
@@ -49,11 +50,27 @@ func isPrivateFieldPath(path string) bool {
 // track fields are plain strings, so they never parse, which would leak full
 // track data (PAN, expiry, discretionary) through the text view. Our masks do
 // not depend on parsing, so they always mask.
-func safeDescribeFilters() []iso8583.FieldFilter {
+//
+// It also registers a canonical filter for every present primitive field so the
+// describe output shows the same zero-padded width as the JSON and filtered
+// views (moov's describe prints field.String(), which drops a fixed-length
+// field's padding). The sensitive masks are appended last so they override the
+// canonical filter for the fields they cover.
+func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
 	mask := func(fn func(string) string) iso8583.FilterFunc {
 		return func(in string, _ field.Field) string { return fn(in) }
 	}
-	filters := []iso8583.FieldFilter{
+	canonical := func(in string, f field.Field) string { return canonicalFieldValue(f, in) }
+
+	var filters []iso8583.FieldFilter
+	for id := range msg.GetFields() {
+		if id == 0 || id == 1 { // MTI and bitmap are rendered separately
+			continue
+		}
+		filters = append(filters, iso8583.FilterField(strconv.Itoa(id), canonical))
+	}
+
+	filters = append(filters,
 		iso8583.FilterField("2", mask(maskPAN)),
 		iso8583.FilterField("20", mask(maskPAN)),
 		iso8583.FilterField("35", mask(maskTrack)),
@@ -61,7 +78,7 @@ func safeDescribeFilters() []iso8583.FieldFilter {
 		iso8583.FilterField("45", mask(maskTrack)),
 		iso8583.FilterField("52", mask(maskAll)),
 		iso8583.FilterField("55", iso8583.EMVFilter),
-	}
+	)
 	// Content-scan the free-form private fields so an embedded PAN does not leak
 	// through the text view.
 	for id := range privateFieldIDs {

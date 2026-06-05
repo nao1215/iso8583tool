@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Zero-padded fixed-length fields now show their canonical width consistently
+  across every surface. The full `view` describe output and the `decoded[].value`
+  entries (in both `view --format json` and `validate --format json`) previously
+  used the collapsed integer form (`F3: 0`, `value: "0"`) while the filtered and
+  JSON `fields` views showed the padded form (`000000`). All of them now report
+  the canonical, edit-ready value.
+
 - A custom moov-io/iso8583 JSON spec passed with `--spec PATH` now loads the
   `Hex`, `Track1`, `Track3`, and `IndexTag` field types, both at the top level
   and inside composite subfields. Previously these failed with a "no constructor
