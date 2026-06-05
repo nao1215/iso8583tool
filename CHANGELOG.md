@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate --strict` now checks advice and network-management messages that
+  previously passed with only a STAN. An authorization/financial advice (`0120`,
+  `0220`) is held to the same core requirements as the request it stands in for
+  (processing code, amount, transmission date/time, and a PAN source), and every
+  network-management message (`0810`, `0820`, `0830`, in addition to `0800`)
+  requires the network-management code in field 70.
+
 - `view --filter` and `diff --filter` now match EMV tag paths case-insensitively,
   so `55.9f02` and `55.9F02` select the same field instead of one of them
   reporting `<not present>` or `No differences.`.
