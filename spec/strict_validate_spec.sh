@@ -95,4 +95,11 @@ Describe 'iso8583tool validate --strict advice and network rules'
     The status should be success
     The output should include 'class 5'
   End
+
+  It 'rejects an alphabetic value in a numeric field (70)'
+    hex=$(hollow c0800 '{"mti":"0800","fields":{"11":"123456","70":"ABC"}}')
+    When run iso8583tool validate "$hex" --strict
+    The status should be failure
+    The output should include 'must be numeric'
+  End
 End

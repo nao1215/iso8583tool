@@ -141,3 +141,49 @@ func TestStrictWarnsOnUnmodeledClasses(t *testing.T) {
 		}
 	}
 }
+
+// TestStrictRejectsAlphabeticNumericFields pins that a numeric field carrying an
+// alphabetic value fails strict validation. moov models these fields as String,
+// so without the digit check an alphabetic value packs and passes.
+func TestStrictRejectsAlphabeticNumericFields(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{
+		"2": "4111111111111111", "3": "000000", "4": "000000001000",
+		"7": "0605123456", "11": "123456",
+	}
+	cases := []struct{ id, value string }{
+		{"70", "ABC"},
+		{"90", "NOTNUMERICNOTNUMERICNOTNUMERICNOTNUMERIC12"},
+		{"95", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{"100", "HELLOWORLD1"},
+	}
+	for _, tc := range cases {
+		fields := map[string]string{}
+		for k, v := range base {
+			fields[k] = v
+		}
+		fields[tc.id] = tc.value
+		report := strictReport(t, messageio.Document{MTI: "0200", Fields: fields})
+		if report.Valid {
+			t.Errorf("an alphabetic field %s must fail strict validation", tc.id)
+		}
+		found := false
+		for _, issue := range report.Issues {
+			if issue.Path == tc.id && strings.Contains(issue.Message, "must be numeric") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("field %s should report a numeric-only error, issues=%v", tc.id, report.Issues)
+		}
+	}
+
+	// A digit value still passes.
+	ok := strictReport(t, messageio.Document{MTI: "0800", Fields: map[string]string{"11": "123456", "70": "301"}})
+	for _, issue := range ok.Issues {
+		if strings.Contains(issue.Message, "must be numeric") {
+			t.Errorf("a digit value must not trigger the numeric check: %v", issue)
+		}
+	}
+}

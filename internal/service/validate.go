@@ -221,6 +221,19 @@ func strictSemanticIssues(msg *iso8583.Message, mti string) []ValidationIssue {
 	// The system trace audit number (field 11) ties a message to its pair.
 	require(11, "every BASE I message")
 
+	// Numeric fields must carry digits only. moov models them as String (a
+	// 42-digit field overflows a fixed-width integer), so an alphabetic value
+	// packs and would otherwise pass; flag it here.
+	for _, id := range basei.NumericSecondaryFields {
+		f, ok := fields[id]
+		if !ok {
+			continue
+		}
+		if s, err := f.String(); err == nil && s != "" && !isAllDigits(s) {
+			add(SeverityError, strconv.Itoa(id), "strict: field "+strconv.Itoa(id)+" must be numeric (digits only)")
+		}
+	}
+
 	switch class {
 	case '1', '2': // authorization / financial
 		switch {
@@ -310,6 +323,19 @@ func className(class byte) string {
 	default:
 		return "unknown"
 	}
+}
+
+// isAllDigits reports whether s is non-empty and every byte is an ASCII digit.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // isApprovalCode reports whether a BASE I response code (field 39) is an
