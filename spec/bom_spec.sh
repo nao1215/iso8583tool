@@ -16,14 +16,14 @@ Describe 'iso8583tool convert with a UTF-8 BOM'
   BeforeEach 'setup'
   AfterEach 'cleanup'
 
-  It 'auto-detects BOM-prefixed JSON as a document to pack' # bug 12
+  It 'auto-detects BOM-prefixed JSON as a document to pack'
     When run iso8583tool convert "$WORK/bom.json"
     The status should be success
     The output should not include 'invalid byte'
     The output should not include 'decode hex'
   End
 
-  It 'packs BOM-prefixed JSON with an explicit --to hex' # bug 13
+  It 'packs BOM-prefixed JSON with an explicit --to hex'
     When run iso8583tool convert "$WORK/bom.json" --to hex
     The status should be success
     The output should not include 'invalid character'

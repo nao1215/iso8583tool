@@ -48,7 +48,7 @@ Describe 'iso8583tool CLI surface'
       The status should be success
       The output should include 'Usage: iso8583tool view'
       The output should include '--filter'
-      # Successful help must go to stdout, not stderr (bug 36).
+      # Successful help must go to stdout, not stderr.
       The stderr should equal ''
     End
   End

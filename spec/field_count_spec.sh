@@ -13,7 +13,7 @@ Describe 'iso8583tool convert field count'
   BeforeEach 'setup'
   AfterEach 'cleanup'
 
-  It 'reports the top-level field count matching doctor' # bug 18
+  It 'reports the top-level field count matching doctor'
     out="$WORK/out.hex"
     summary=$(iso8583tool convert "$EXAMPLES/0100-auth-request.json" --output "$out" | head -1)
     count=$(iso8583tool doctor "$out" --format json \

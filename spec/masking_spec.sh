@@ -19,43 +19,43 @@ Describe 'iso8583tool sensitive-data masking'
     printf '%s' "$doc" | iso8583tool convert --to hex | iso8583tool view - --format json "$@"
   }
 
-  It 'does not mask a non-PAN business identifier' # bug 24
+  It 'does not mask a non-PAN business identifier'
     When call view_json '{"mti":"0110","fields":{"11":"123456","39":"00","63":"ORDER_ID=1234567890123|TOKEN=ABC"}}'
     The status should be success
     The output should include 'ORDER_ID=1234567890123'
   End
 
-  It 'masks a dash-separated PAN' # bug 25
+  It 'masks a dash-separated PAN'
     When call view_json '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111-1111-1111-1111"}}'
     The status should be success
     The output should not include '1111-1111-1111'
   End
 
-  It 'masks a space-separated PAN' # bug 26
+  It 'masks a space-separated PAN'
     When call view_json '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111 1111 1111 1111"}}'
     The status should be success
     The output should not include '1111 1111 1111'
   End
 
-  It 'masks a PAN embedded in a non-private free-form field' # bug 27
+  It 'masks a PAN embedded in a non-private free-form field'
     When call view_json '{"mti":"0110","fields":{"11":"123456","39":"00","44":"PAN=4111111111111111"}}'
     The status should be success
     The output should not include '4111111111111111'
   End
 
-  It 'masks the extended PAN field 34' # bug 28
+  It 'masks the extended PAN field 34'
     When call view_json '{"mti":"0100","fields":{"11":"123456","34":"411111111111111111111111"}}'
     The status should be success
     The output should not include '411111111111111111111111'
   End
 
-  It 'does not mask the country code field 20' # bug 29
+  It 'does not mask the country code field 20'
     When call view_json '{"mti":"0100","fields":{"11":"123456","20":"840"}}'
     The status should be success
     The output should include '"20": "840"'
   End
 
-  It 'shows the raw field 20 change in diff' # bug 30
+  It 'shows the raw field 20 change in diff'
     printf '%s' '{"mti":"0100","fields":{"11":"123456","20":"840"}}' | iso8583tool convert --to hex > "$WORK/a.hex"
     printf '%s' '{"mti":"0100","fields":{"11":"123456","20":"392"}}' | iso8583tool convert --to hex > "$WORK/b.hex"
     When run iso8583tool diff "$WORK/a.hex" "$WORK/b.hex" --no-color
