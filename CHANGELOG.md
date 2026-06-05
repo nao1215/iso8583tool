@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `doctor` now treats a tie consistently. When more than one preset fits equally
+  well, every tied preset is labeled `recommended` in the candidate list (not
+  just the default) and each gets its own `Confirm with:` command, instead of
+  steering the user to the first preset alone.
+- `doctor`'s `Confirm with:` command is now shell-safe: a path containing a space
+  is quoted, and a `-`-prefixed filename is placed after a `--` separator so it is
+  not parsed as an option.
+- `validate` points a failed unpack at `doctor` only for a built-in preset, which
+  is all `doctor` can detect. Under a custom `--spec PATH` it instead suggests
+  checking the spec file and the capture, since `doctor` cannot help there.
 - Sensitive-data masking no longer over-masks a harmless field under a custom
   `--spec PATH`. The BASE I positional rules (field 35 = track, 52 = PIN) apply
   only to the bundled presets; under a custom spec those field ids carry

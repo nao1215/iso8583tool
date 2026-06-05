@@ -83,10 +83,16 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 		// detector. But when the message is too short to even hold its MTI or
 		// bitmap (or the library panicked on an overrun), no spec can rescue it —
 		// it is truncated or corrupt, and doctor will not help, so say that.
-		if diag.Malformed() {
+		switch {
+		case diag.Malformed():
 			report.Hint = "the message appears truncated or malformed (it is too short to hold its header/bitmap); re-capture the full message before retrying"
-		} else {
+		case isBuiltinPreset(specLabel):
+			// doctor only tries the built-in presets, so it can help here.
 			report.Hint = "the message did not unpack under " + specLabel + "; run `iso8583tool doctor` to detect the right spec"
+		default:
+			// A custom --spec PATH: doctor cannot detect it, so steer the user to
+			// the spec/capture instead.
+			report.Hint = "the message did not unpack under " + specLabel + "; the spec path may be wrong, or the capture may not match this custom layout — check the spec file and the message"
 		}
 		report.Valid = false
 		return report
@@ -145,6 +151,13 @@ func ValidateMessage(raw []byte, spec *iso8583.MessageSpec, specLabel string, ca
 
 	report.Valid = !report.HasErrors()
 	return report
+}
+
+// isBuiltinPreset reports whether specLabel names one of the bundled presets.
+// doctor only tries those, so it can only help when the active spec is built-in.
+func isBuiltinPreset(specLabel string) bool {
+	_, ok := basei.LookupPreset(strings.TrimSpace(specLabel))
+	return ok
 }
 
 // strictSemanticIssues applies message-class-aware BASE I checks. It is a

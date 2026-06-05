@@ -790,11 +790,15 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+diag.Recommended))
 	}
 
+	// Every preset tied at the best score is "recommended"; on a tie the default
+	// must not be presented as the single answer.
+	recommended := recommendedSet(diag)
+
 	writef(a.stdout, "\n%s\n", pal.BoldCyan("Candidates:"))
 	for _, c := range diag.Candidates {
 		name := fmt.Sprintf("%-18s", c.Preset)
 		switch {
-		case c.Preset == diag.Recommended:
+		case recommended[c.Preset]:
 			writef(a.stdout, "- %s %s  %s\n", pal.Green(name), pal.BoldGreen("recommended"), pal.Dim(c.Detail))
 		case c.Unpacks:
 			writef(a.stdout, "- %s %s         %s\n", pal.Green(name), pal.Cyan("fits"), pal.Dim(c.Detail))
@@ -803,17 +807,81 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 		}
 	}
 
-	if diag.Recommended != "" {
-		hintTarget := target
-		if strings.TrimSpace(hintTarget) == "" || hintTarget == "-" {
-			hintTarget = "MESSAGE"
-		}
+	confirmPresets := diag.Recommendations
+	if len(confirmPresets) == 0 && diag.Recommended != "" {
+		confirmPresets = []string{diag.Recommended}
+	}
+	if len(confirmPresets) > 0 {
 		encFlag := ""
 		if diag.InputEncoding == "raw" {
 			encFlag = " --encoding raw"
 		}
-		writef(a.stdout, "\n%s iso8583tool view %s --spec %s%s\n",
-			pal.Dim("Confirm with:"), hintTarget, diag.Recommended, encFlag)
+		if len(confirmPresets) == 1 {
+			writef(a.stdout, "\n%s %s\n", pal.Dim("Confirm with:"), confirmCommand(target, confirmPresets[0], encFlag))
+		} else {
+			writef(a.stdout, "\n%s\n", pal.Dim("Confirm with:"))
+			for _, preset := range confirmPresets {
+				writef(a.stdout, "  %s\n", confirmCommand(target, preset, encFlag))
+			}
+		}
+	}
+}
+
+// recommendedSet returns the set of presets tied at the best score. It falls
+// back to the single Recommended when no explicit tie list is present.
+func recommendedSet(diag service.SpecDiagnosis) map[string]bool {
+	set := make(map[string]bool, len(diag.Recommendations)+1)
+	for _, r := range diag.Recommendations {
+		set[r] = true
+	}
+	if len(set) == 0 && diag.Recommended != "" {
+		set[diag.Recommended] = true
+	}
+	return set
+}
+
+// confirmCommand builds a copy-pasteable `view` command for a doctor candidate.
+// The target is shell-quoted, and a "-"-prefixed filename is placed after a "--"
+// separator (with the flags before it) so it is not parsed as an option.
+func confirmCommand(target, preset, encFlag string) string {
+	hintTarget := strings.TrimSpace(target)
+	if hintTarget == "" || hintTarget == "-" {
+		return fmt.Sprintf("iso8583tool view --spec %s%s MESSAGE", preset, encFlag)
+	}
+	sep := ""
+	if strings.HasPrefix(hintTarget, "-") {
+		sep = "-- "
+	}
+	return fmt.Sprintf("iso8583tool view --spec %s%s %s%s", preset, encFlag, sep, shellQuoteArg(hintTarget))
+}
+
+// shellQuoteArg returns s safe to paste as a single shell argument: an unquoted
+// value when it contains only portable filename characters, otherwise a
+// single-quoted value with embedded single quotes escaped.
+func shellQuoteArg(s string) string {
+	safe := s != ""
+	for _, r := range s {
+		if !isPortableArgChar(r) {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// isPortableArgChar reports whether r can appear in a shell argument without
+// quoting (a conservative POSIX-portable filename set).
+func isPortableArgChar(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	case r == '_' || r == '-' || r == '.' || r == '/' || r == '+' || r == '=':
+		return true
+	default:
+		return false
 	}
 }
 
