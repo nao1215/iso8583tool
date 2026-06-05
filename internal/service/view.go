@@ -89,10 +89,15 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			return ViewResult{}, err
 		}
 		body := buf.String()
+		// Sensitive masking is applied per dot-path in colorizeDescribe (so a
+		// top-level field is masked without touching a same-numbered subfield);
+		// unknown-tag bytes are masked here since they are not field lines.
+		var maskFn func(path, value string) string
 		if !unsafe {
 			body = maskUnknownInText(body, unknownTags)
+			maskFn = func(path, value string) string { return maskValueForDiff(path, value, nil) }
 		}
-		body = colorizeDescribe(body, pal)
+		body = colorizeDescribe(body, pal, maskFn)
 		return ViewResult{
 			Body:        body,
 			Summary:     summary,
@@ -431,8 +436,12 @@ func decodeSubfields(parent string, subfields map[string]field.Field) []DecodedF
 }
 
 // colorizeDescribe post-processes the plain moov describe output, adding color
-// and inline meaning annotations while preserving its layout (and masking).
-func colorizeDescribe(plain string, pal render.Palette) string {
+// and inline meaning annotations while preserving its layout. When mask is
+// non-nil it is applied to each field value by its full dot-path, so the text
+// view masks the same paths as the JSON and diff views — and, crucially, masks
+// a top-level field (for example PAN field 2) without touching a same-numbered
+// composite subfield (48.2) that moov's id-keyed filters could not tell apart.
+func colorizeDescribe(plain string, pal render.Palette, mask func(path, value string) string) string {
 	lines := strings.Split(strings.TrimRight(plain, "\n"), "\n")
 	// stack holds the composite ids currently open, outermost first, so a leaf or
 	// nested header reports its full dot-path (for example 55.70.9F02 or F48.2)
@@ -466,7 +475,7 @@ func colorizeDescribe(plain string, pal render.Palette) string {
 			expectOpenDash = true
 			out = append(out, colorizeSubfieldsHeader(line, fullPath, pal))
 		case strings.HasPrefix(line, "F") && strings.Contains(line, ": "):
-			out = append(out, colorizeFieldLine(line, strings.Join(stack, "."), pal))
+			out = append(out, colorizeFieldLine(line, strings.Join(stack, "."), pal, mask))
 		default:
 			out = append(out, line)
 		}
@@ -526,7 +535,7 @@ func colorizeMTILine(line string, pal render.Palette) string {
 	return rendered
 }
 
-func colorizeFieldLine(line, parentPrefix string, pal render.Palette) string {
+func colorizeFieldLine(line, parentPrefix string, pal render.Palette, mask func(path, value string) string) string {
 	idx := strings.Index(line, ": ")
 	if idx < 0 {
 		return line
@@ -552,7 +561,13 @@ func colorizeFieldLine(line, parentPrefix string, pal render.Palette) string {
 		coloredLabel = strings.Replace(label, token[0], pal.Green(token[0]), 1)
 	}
 
-	rendered := coloredLabel + ": " + pal.Yellow(value)
+	displayValue := value
+	if mask != nil {
+		displayValue = mask(path, value)
+	}
+	rendered := coloredLabel + ": " + pal.Yellow(displayValue)
+	// Annotate from the original value: a masked value has no meaning, and a
+	// non-sensitive field is returned unchanged by mask anyway.
 	if meaning, ok := annotate.FieldMeaning(path, strings.TrimSpace(value)); ok {
 		rendered += "  " + pal.Cyan("→ "+meaning)
 	}
