@@ -249,3 +249,147 @@ func TestSendRequiresAddress(t *testing.T) {
 		t.Errorf("missing usage on no address: %q", errOut)
 	}
 }
+
+// startSilentServer accepts one connection, reads the framed request, then holds
+// the connection open without ever replying, so the client's read deadline must
+// fire. It exercises the timeout path over the real CLI.
+func startSilentServer(t *testing.T, framing service.Framing) string {
+	t.Helper()
+	lc := net.ListenConfig{}
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		// Drain the request but never reply; close only when the test ends.
+		_, _ = framing.ReadResponse(conn)
+		t.Cleanup(func() { _ = conn.Close() })
+	}()
+	return ln.Addr().String()
+}
+
+func TestSendNoneFramingSucceeds(t *testing.T) {
+	t.Parallel()
+	reply := sampleResponseBytes(t)
+	addr := startEchoServer(t, service.FramingNone, reply)
+
+	code, out, errOut := runApp("", "send", addr, example("0800-network-echo.hex"), "--framing", "none", "--format", "json")
+	if code != 0 {
+		t.Fatalf("send none: code=%d err=%q", code, errOut)
+	}
+	if !strings.Contains(out, `"framing": "none"`) {
+		t.Errorf("none framing not reported: %s", out)
+	}
+	if !strings.Contains(out, `"mti": "0810"`) {
+		t.Errorf("none framing did not decode the 0810 response: %s", out)
+	}
+}
+
+func TestSendNoneFramingTimesOut(t *testing.T) {
+	t.Parallel()
+	addr := startSilentServer(t, service.FramingNone)
+
+	code, _, errOut := runApp("", "send", addr, example("0800-network-echo.hex"), "--framing", "none", "--timeout", "400ms")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 on timeout (err=%q)", code, errOut)
+	}
+	if !strings.Contains(errOut, "timed out") {
+		t.Errorf("expected a timeout error, got %q", errOut)
+	}
+}
+
+func TestSendInlineJSONViaRaw(t *testing.T) {
+	t.Parallel()
+	reply := sampleResponseBytes(t)
+	addr := startEchoServer(t, service.Framing2ByteBinary, reply)
+
+	// --raw takes an inline message; an inline JSON document is packed with the
+	// active spec, proving --raw is not hex-only.
+	code, out, errOut := runApp("", "send", addr, "--raw", `{"mti":"0800","fields":{"70":"301","11":"654321","41":"TERMNET1"}}`, "--format", "json")
+	if code != 0 {
+		t.Fatalf("send --raw json: code=%d err=%q", code, errOut)
+	}
+	if !strings.Contains(out, `"mti": "0800"`) {
+		t.Errorf("request_view should reflect the inline JSON 0800: %s", out)
+	}
+	if !strings.Contains(out, `"mti": "0810"`) {
+		t.Errorf("response_view should decode the 0810 reply: %s", out)
+	}
+}
+
+func TestSendExpectMTIAndFieldPass(t *testing.T) {
+	t.Parallel()
+	reply := sampleResponseBytes(t)
+	addr := startEchoServer(t, service.Framing2ByteBinary, reply)
+
+	code, _, errOut := runApp("", "send", addr, example("0800-network-echo.hex"),
+		"--expect-mti", "0810", "--expect-field", "39=00", "--expect-field", "70=301")
+	if code != 0 {
+		t.Fatalf("expectations should pass: code=%d err=%q", code, errOut)
+	}
+}
+
+func TestSendExpectMTIMismatchFails(t *testing.T) {
+	t.Parallel()
+	reply := sampleResponseBytes(t)
+	addr := startEchoServer(t, service.Framing2ByteBinary, reply)
+
+	code, _, errOut := runApp("", "send", addr, example("0800-network-echo.hex"), "--expect-mti", "0800")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 on MTI mismatch", code)
+	}
+	if !strings.Contains(errOut, "expectation failed") {
+		t.Errorf("missing expectation-failed header: %q", errOut)
+	}
+	if !strings.Contains(errOut, "0800") || !strings.Contains(errOut, "0810") {
+		t.Errorf("error should show expected (0800) vs actual (0810): %q", errOut)
+	}
+}
+
+func TestSendExpectFieldMismatchFails(t *testing.T) {
+	t.Parallel()
+	reply := sampleResponseBytes(t)
+	addr := startEchoServer(t, service.Framing2ByteBinary, reply)
+
+	code, _, errOut := runApp("", "send", addr, example("0800-network-echo.hex"), "--expect-field", "39=99")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 on field mismatch", code)
+	}
+	if !strings.Contains(errOut, "expectation failed") {
+		t.Errorf("missing expectation-failed header: %q", errOut)
+	}
+}
+
+func TestSendExpectFieldUnmaskedCanonical(t *testing.T) {
+	t.Parallel()
+	// The reply carries a real PAN; the assertion must compare against the
+	// unmasked canonical value even though the printed view masks it.
+	reply, _ := panFixtureReply(t)
+	addr := startEchoServer(t, service.Framing2ByteBinary, reply)
+
+	code, out, errOut := runApp("", "send", addr, example("0100-auth-request.hex"),
+		"--expect-field", "2=4111111111111111", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expectation against the unmasked PAN should pass: code=%d err=%q", code, errOut)
+	}
+	// The default output still masks the PAN.
+	if strings.Contains(out, "4111111111111111") {
+		t.Errorf("output should still mask the PAN: %s", out)
+	}
+}
+
+func TestSendExpectFieldRejectsMissingEquals(t *testing.T) {
+	t.Parallel()
+	code, _, errOut := runApp("", "send", "127.0.0.1:1", example("0800-network-echo.hex"), "--expect-field", "39")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 on malformed --expect-field", code)
+	}
+	if !strings.Contains(errOut, "invalid --expect-field") {
+		t.Errorf("expected an invalid --expect-field error, got %q", errOut)
+	}
+}

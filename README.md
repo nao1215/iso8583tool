@@ -219,16 +219,25 @@ retry, or sign-on logic.
 ![send](./docs/demo-send.gif)
 
 The input is a JSON document (packed with the active spec) or an already-packed
-hex/raw message, read from a file, `-`, stdin, or `--raw`.
+hex/raw message, read from a file, `-`, stdin, or `--raw`. `--raw` takes an
+inline message — a JSON document or a hex/raw string — not hex only.
 
 `--framing` selects the length header, used for both request and response:
 
 - `2byte-binary` (default) — a 2-byte big-endian length prefix.
 - `4digit-ascii` — a 4-digit ASCII length header (`0094…`).
-- `none` — no header; the response is read until EOF or `--timeout`.
+- `none` — no header; the request half-closes after the write and the response
+  is read until EOF (the peer closes) or `--timeout`.
 
 `--timeout` (default `5s`) bounds the connect and read. The request and response
 are masked by default like [`view`](#view); `--unsafe` shows raw values.
+
+For shell-based E2E or CI, assert on the decoded reply without piping through
+`jq`: `--expect-mti VALUE` checks the response MTI, and `--expect-field
+PATH=VALUE` (repeatable) checks a field. Assertions compare against the decoded,
+**unmasked canonical** values — so an expectation on a masked field (a PAN, for
+example) still matches its real value — and any mismatch prints a deterministic
+`expected … got …` error on stderr and exits non-zero.
 
 ```shell
 # Send a packed 0800 network echo and decode the 0810 reply (default framing).
@@ -236,6 +245,16 @@ iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
 
 # Pack a JSON document with the active spec, then send it with a 4-digit header.
 iso8583tool send 127.0.0.1:8583 examples/basei/0100-auth-request.json --framing 4digit-ascii
+
+# Send without a length header (read the reply until the peer closes or --timeout).
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex --framing none
+
+# Pass an inline message with --raw (JSON here; hex/raw also work).
+iso8583tool send 127.0.0.1:8583 --raw '{"mti":"0800","fields":{"70":"301"}}'
+
+# Assert the reply in CI: a non-zero exit on any mismatch, no jq required.
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex \
+  --expect-mti 0810 --expect-field 39=00
 
 # Read the message from stdin and emit machine-readable JSON for jq.
 iso8583tool sample 0800-network-echo --format hex \

@@ -163,6 +163,54 @@ Describe 'README examples'
     End
   End
 
+  Describe 'send'
+    # Drive the README send snippets against the in-repo, 127.0.0.1-only mock
+    # (built once here) so the documented examples stay executable in CI.
+    BeforeAll 'build_mock'
+    AfterAll 'remove_mock'
+
+    Describe 'default 2byte-binary framing'
+      BeforeEach 'make_workdir; start_mock 2byte-binary'
+      AfterEach 'stop_mock; remove_workdir'
+
+      It 'sends a packed 0800 and decodes the 0810 reply'
+        When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex"
+        The status should be success
+        The output should include '0810'
+      End
+
+      It 'reads the message from stdin and is jq-compatible for the response MTI'
+        When run sh -c '"$ISO_BIN" sample 0800-network-echo --format hex | "$ISO_BIN" send "$1" - --format json | jq -r ".response_view.mti"' sh "$MOCK_ADDR"
+        The status should be success
+        The output should equal '0810'
+      End
+
+      It 'asserts the reply with --expect-mti / --expect-field (no jq needed)'
+        When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --expect-mti 0810 --expect-field 39=00
+        The status should be success
+        The output should include '0810'
+      End
+
+      It 'accepts an inline message via --raw'
+        When run iso8583tool send "$MOCK_ADDR" --raw '{"mti":"0800","fields":{"70":"301","11":"654321","41":"TERMNET1"}}' --format json
+        The status should be success
+        The output should include '"mti": "0810"'
+      End
+    End
+
+    Describe '4-digit ASCII framing'
+      BeforeEach 'make_workdir; start_mock 4digit-ascii'
+      AfterEach 'stop_mock; remove_workdir'
+
+      It 'packs a JSON document and sends it with a 4-digit header'
+        When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0100-auth-request.json" --framing 4digit-ascii --format json
+        The status should be success
+        The output should include '"framing": "4digit-ascii"'
+        The output should include '"mti": "0810"'
+      End
+    End
+  End
+
   Describe 'unknown TLV round-trip'
     It 'preserves the unknown tag when unpacking and packing again'
       When run sh -c '"$ISO_BIN" convert "$EXAMPLES/0100-auth-request-unknown-tlv.hex" | "$ISO_BIN" convert | "$ISO_BIN" view - --filter 55.DF8129'
