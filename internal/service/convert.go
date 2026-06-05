@@ -80,7 +80,17 @@ func appendFieldToDocument(doc *messageio.Document, path string, f field.Field) 
 	if isTLVCompositeField(f) {
 		sub := f.(compositeField).GetSubfields()
 		for _, tag := range sortedFieldKeys(sub) {
-			b, err := sub[tag].Bytes()
+			child := sub[tag]
+			// A constructed (nested) TLV tag is itself a composite; recurse so its
+			// children get their own leaf paths (55.70.9F02) instead of collapsing
+			// into the parent tag's raw blob (55.70).
+			if isTLVCompositeField(child) {
+				if err := appendFieldToDocument(doc, path+"."+tag, child); err != nil {
+					return err
+				}
+				continue
+			}
+			b, err := child.Bytes()
 			if err != nil {
 				return fmt.Errorf("field %s.%s: %w", path, tag, err)
 			}
