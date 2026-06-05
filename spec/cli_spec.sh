@@ -11,10 +11,10 @@ Describe 'iso8583tool CLI surface'
     It 'prints help with no arguments'
       When run iso8583tool
       The status should be success
-      The stderr should include 'Commands:'
-      The stderr should include 'view'
-      The stderr should include 'convert'
-      The stderr should include 'validate'
+      The output should include 'Commands:'
+      The output should include 'view'
+      The output should include 'convert'
+      The output should include 'validate'
     End
   End
 
@@ -39,15 +39,17 @@ Describe 'iso8583tool CLI surface'
     It 'describes convert and exits 0'
       When run iso8583tool help convert
       The status should be success
-      The stderr should include 'Usage: iso8583tool convert'
-      The stderr should include '--to'
+      The output should include 'Usage: iso8583tool convert'
+      The output should include '--to'
     End
 
     It 'describes view and lists --filter'
       When run iso8583tool view --help
       The status should be success
-      The stderr should include 'Usage: iso8583tool view'
-      The stderr should include '--filter'
+      The output should include 'Usage: iso8583tool view'
+      The output should include '--filter'
+      # Successful help must go to stdout, not stderr (bug 36).
+      The stderr should equal ''
     End
   End
 
