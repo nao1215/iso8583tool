@@ -178,6 +178,12 @@ Describe 'README examples'
       The output should include 'Spec: spec87ascii'
     End
 
+    It 'strict-validates the spec87ascii sample under its intended preset' # bug 23
+      When run iso8583tool validate "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87ascii --strict
+      The status should be success
+      The output should include 'ok'
+    End
+
     It 'views the spec87ascii sample'
       When run iso8583tool view "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87ascii
       The status should be success
