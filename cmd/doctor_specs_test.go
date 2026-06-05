@@ -177,3 +177,95 @@ func TestValidateFailureHintsDoctor(t *testing.T) {
 		t.Errorf("validate failure should hint at doctor\n%s", out)
 	}
 }
+
+// TestDoctorAmbiguousListsAllTiedPresets guards that a tie does not present the
+// default as the single answer: every preset tied at the best score is labeled
+// "recommended" in the candidate list, and each gets a Confirm-with command.
+func TestDoctorAmbiguousListsAllTiedPresets(t *testing.T) {
+	t.Parallel()
+
+	code, out, _ := runApp("", "doctor", "../examples/spec87ascii/0800-network-echo.hex", "--no-color")
+	if code != 0 {
+		t.Fatalf("doctor failed: %d\n%s", code, out)
+	}
+	// Both basei-starter and spec87ascii fit this message equally well.
+	if strings.Count(out, "recommended") < 2 {
+		t.Errorf("a tie should mark every tied preset recommended:\n%s", out)
+	}
+	for _, want := range []string{
+		"iso8583tool view --spec basei-starter",
+		"iso8583tool view --spec spec87ascii",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Confirm-with should list every tied preset; missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestDoctorConfirmHintIsShellSafe(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src, err := os.ReadFile(example("0110-auth-response.hex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A path containing a space must be quoted.
+	spaced := filepath.Join(dir, "with space.hex")
+	if err := os.WriteFile(spaced, src, 0o600); err != nil { //nolint:gosec // spaced is under the test's temp dir
+		t.Fatal(err)
+	}
+	_, out, _ := runApp("", "doctor", spaced, "--no-color")
+	if !strings.Contains(out, "'"+spaced+"'") {
+		t.Errorf("a path with a space must be quoted in the confirm hint:\n%s", out)
+	}
+
+	// A "-"-prefixed filename must be placed after a "--" separator so it is not
+	// parsed as a flag (tested at the command-builder level, since a real
+	// "-"-prefixed relative path cannot be opened from the test working dir).
+	if got := confirmCommand("-resp.hex", "basei-starter", ""); got != "iso8583tool view --spec basei-starter -- -resp.hex" {
+		t.Errorf("confirmCommand for a dash path = %q", got)
+	}
+	if got := confirmCommand("/tmp/with space.hex", "basei-starter", " --encoding raw"); got != "iso8583tool view --spec basei-starter --encoding raw '/tmp/with space.hex'" {
+		t.Errorf("confirmCommand for a spaced path = %q", got)
+	}
+}
+
+// TestValidateHintBuiltinVsCustom checks that a failed unpack steers the user to
+// doctor only for a built-in preset; for a custom --spec PATH (which doctor
+// cannot detect) it points at the spec/capture instead.
+func TestValidateHintBuiltinVsCustom(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A bitmap-composite custom spec and a message packed under a different custom
+	// layout, so the message does not unpack under it.
+	bitmapSpec := filepath.Join(dir, "f127-bitmap.json")
+	if err := os.WriteFile(bitmapSpec, []byte(`{"name":"F127 bitmap","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"127":{"type":"Composite","length":255,"description":"Private use field","prefix":"ASCII.LL","bitmap":{"type":"Bitmap","length":8,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed","disableAutoExpand":true},"subfields":{"1":{"type":"String","length":2,"description":"A","enc":"ASCII","prefix":"ASCII.Fixed"},"2":{"type":"String","length":2,"description":"B","enc":"ASCII","prefix":"ASCII.Fixed"}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	posSpec := filepath.Join(dir, "f48-pos.json")
+	if err := os.WriteFile(posSpec, []byte(`{"name":"F48 positional","fields":{"0":{"type":"String","length":4,"description":"MTI","enc":"ASCII","prefix":"ASCII.Fixed"},"1":{"type":"Bitmap","length":16,"description":"Bitmap","enc":"HexToASCII","prefix":"Hex.Fixed"},"11":{"type":"String","length":6,"description":"STAN","enc":"ASCII","prefix":"ASCII.Fixed"},"48":{"type":"Composite","length":999,"description":"Private Data","prefix":"ASCII.LLL","tag":{"sort":"StringsByInt"},"subfields":{"1":{"type":"String","length":3,"description":"A","enc":"ASCII","prefix":"ASCII.Fixed"},"2":{"type":"String","length":2,"description":"B","enc":"ASCII","prefix":"ASCII.Fixed"}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hexOut := filepath.Join(dir, "msg.hex")
+	if code, _, errOut := runApp(`{"mti":"0100","fields":{"11":"123456","127.1":"AA","127.2":"BB"}}`, "convert", "--to", "hex", "--spec", bitmapSpec, "--output", hexOut); code != 0 {
+		t.Fatalf("convert failed: %s", errOut)
+	}
+
+	// Custom spec mismatch: must NOT mention doctor.
+	_, out, _ := runApp("", "validate", hexOut, "--spec", posSpec, "--encoding", "hex", "--no-color")
+	if strings.Contains(out, "doctor") {
+		t.Errorf("a custom-spec failure must not point at doctor:\n%s", out)
+	}
+	if !strings.Contains(out, "spec file") {
+		t.Errorf("a custom-spec failure should point at the spec/capture:\n%s", out)
+	}
+
+	// Built-in spec mismatch: should mention doctor.
+	_, out2, _ := runApp("", "validate", example("0110-auth-response.hex"), "--spec", "spec87bcd-starter", "--no-color")
+	if !strings.Contains(out2, "doctor") {
+		t.Errorf("a built-in-preset failure should point at doctor:\n%s", out2)
+	}
+}
