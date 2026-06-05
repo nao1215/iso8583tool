@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/moov-io/iso8583"
 )
 
 // Framing is the message-length convention used on the wire. A single ISO 8583
@@ -261,4 +263,89 @@ func SendMessage(req SendRequest) (SendResult, error) {
 		ReceivedBytes: len(resp) + req.Framing.headerLen(),
 		RTT:           rtt,
 	}, nil
+}
+
+// FieldExpectation is one `--expect-field PATH=VALUE` assertion: the field at
+// Path must decode to Value.
+type FieldExpectation struct {
+	Path  string
+	Value string
+}
+
+// ExpectationFailure records one assertion that did not hold. Present is false
+// when the expected field was absent from the response entirely (as opposed to
+// present with a different value).
+type ExpectationFailure struct {
+	Label    string // human label: "MTI" or "F<path>"
+	Expected string
+	Actual   string
+	Present  bool
+}
+
+// String renders a deterministic, single-line description of the failure.
+func (f ExpectationFailure) String() string {
+	if !f.Present {
+		return fmt.Sprintf("%s: expected %q but the field is not present in the response", f.Label, f.Expected)
+	}
+	return fmt.Sprintf("%s: expected %q, got %q", f.Label, f.Expected, f.Actual)
+}
+
+// CheckExpectations compares the decoded response against the expected MTI and
+// field values and returns the assertions that failed (empty when all hold).
+//
+// The comparison uses the unmasked, canonical field values from
+// MessageToDocument — the same edit-ready representation `convert` emits — not
+// the masked display strings, so an assertion on a PAN or other sensitive field
+// matches its real value even though the printed view masks it. An empty
+// expectMTI skips the MTI check; an empty expectFields skips field checks.
+func CheckExpectations(spec *iso8583.MessageSpec, response []byte, expectMTI string, expectFields []FieldExpectation) ([]ExpectationFailure, error) {
+	doc, err := MessageToDocument(spec, response)
+	if err != nil {
+		return nil, err
+	}
+	flat := FlattenDocument(doc)
+
+	var failures []ExpectationFailure
+	if want := strings.TrimSpace(expectMTI); want != "" {
+		if doc.MTI != want {
+			failures = append(failures, ExpectationFailure{
+				Label:    "MTI",
+				Expected: want,
+				Actual:   doc.MTI,
+				Present:  true,
+			})
+		}
+	}
+
+	for _, exp := range expectFields {
+		path := strings.TrimSpace(exp.Path)
+		actual, present := lookupFlatValue(flat, doc.MTI, path)
+		if !present || actual != exp.Value {
+			failures = append(failures, ExpectationFailure{
+				Label:    "F" + path,
+				Expected: exp.Value,
+				Actual:   actual,
+				Present:  present,
+			})
+		}
+	}
+	return failures, nil
+}
+
+// lookupFlatValue resolves a field path against the flattened document. The
+// pseudo-paths "0" and "mti" select the MTI; EMV hex tags match
+// case-insensitively (so "55.9f02" finds "55.9F02").
+func lookupFlatValue(flat map[string]string, mti, path string) (string, bool) {
+	if u := strings.ToUpper(path); u == "MTI" || u == "0" {
+		return mti, mti != ""
+	}
+	if v, ok := flat[path]; ok {
+		return v, true
+	}
+	for k, v := range flat {
+		if strings.EqualFold(k, path) {
+			return v, true
+		}
+	}
+	return "", false
 }

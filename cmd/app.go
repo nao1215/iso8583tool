@@ -376,7 +376,7 @@ func (a *App) runRedact(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Mask cardholder data and secrets so a message can be shared safely.")
-		writeLine(flagSet.Output(), "Usage: iso8583tool redact [MESSAGE|-] [--raw HEX] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Usage: iso8583tool redact [MESSAGE|-] [--raw MESSAGE] [--format json|text] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--color auto|always|never]")
 		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(flagSet.Output(), "Output is a sanitized document for sharing, not a re-packable message.")
 		printFlagDefaults(flagSet.Output(), flagSet)
@@ -600,10 +600,14 @@ func (a *App) runSend(args []string) int {
 	color := flagSet.String("color", "auto", "colorize output: auto, always, or never")
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	unsafe := flagSet.Bool("unsafe", false, "show raw PAN, track, PIN, and private-field data (default: masked)")
+	expectMTI := flagSet.String("expect-mti", "", "assert the response MTI equals VALUE; mismatch exits non-zero")
+	var expectFields multiFlag
+	flagSet.Var(&expectFields, "expect-field", "assert a response field equals a value, PATH=VALUE (repeatable, e.g. --expect-field 39=00)")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Send an ISO8583 message over TCP and decode the single response.")
-		writeLine(flagSet.Output(), "Usage: iso8583tool send HOST:PORT [MESSAGE|-] [--raw HEX] [--framing 2byte-binary|4digit-ascii|none] [--timeout DURATION] [--encoding auto|hex|raw] [--format describe|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
-		writeLine(flagSet.Output(), "MESSAGE is a JSON document (packed with the active spec) or a packed hex/raw message; reads from stdin when MESSAGE is '-' or omitted.")
+		writeLine(flagSet.Output(), "Usage: iso8583tool send HOST:PORT [MESSAGE|-] [--raw MESSAGE] [--framing 2byte-binary|4digit-ascii|none] [--timeout DURATION] [--expect-mti VALUE] [--expect-field PATH=VALUE ...] [--encoding auto|hex|raw] [--format describe|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "MESSAGE is a JSON document (packed with the active spec) or a packed hex/raw message; reads from stdin when MESSAGE is '-' or omitted. --raw takes an inline message (JSON or hex/raw) instead of a file argument.")
+		writeLine(flagSet.Output(), "--expect-mti / --expect-field assert against the decoded, unmasked canonical response values; any mismatch prints a deterministic error and exits non-zero.")
 		writeLine(flagSet.Output(), "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(flagSet.Output(), flagSet)
 	}
@@ -622,6 +626,11 @@ func (a *App) runSend(args []string) int {
 		return 1
 	}
 	framing, err := service.ParseFraming(*framingName)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+	expectations, err := parseFieldExpectations(expectFields)
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -669,11 +678,54 @@ func (a *App) runSend(args []string) int {
 		return 1
 	}
 
-	if *format == "json" {
-		return a.printSendJSON(result, string(framing), *timeout, payload, reqView, respView, *unsafe)
+	// Assertions run against the decoded, unmasked canonical response values, so
+	// an expectation on a sensitive field still matches its real value even though
+	// the printed output below masks it.
+	failures, err := service.CheckExpectations(ctx.spec.MessageSpec, result.Response, *expectMTI, expectations)
+	if err != nil {
+		writeLine(a.stderr, fmt.Errorf("evaluate expectations against %s: %w", result.RemoteAddr, err))
+		return 1
 	}
-	a.printSendDescribe(result, string(framing), *timeout, ctx.specLabel, reqView, respView, a.palette(mode, *format))
+
+	if *format == "json" {
+		if code := a.printSendJSON(result, string(framing), *timeout, payload, reqView, respView, *unsafe); code != 0 {
+			return code
+		}
+	} else {
+		a.printSendDescribe(result, string(framing), *timeout, ctx.specLabel, reqView, respView, a.palette(mode, *format))
+	}
+
+	// Print the exchange first (so a failing run still shows the response), then
+	// report any unmet expectations on stderr and exit non-zero.
+	if len(failures) > 0 {
+		writeLine(a.stderr, "send expectation failed:")
+		for _, f := range failures {
+			writef(a.stderr, "  %s\n", f.String())
+		}
+		return 1
+	}
 	return 0
+}
+
+// parseFieldExpectations turns repeated --expect-field PATH=VALUE flags into
+// structured expectations, rejecting any entry without a "=" or an empty path.
+func parseFieldExpectations(raw []string) ([]service.FieldExpectation, error) {
+	expectations := make([]service.FieldExpectation, 0, len(raw))
+	for _, entry := range raw {
+		pathPart, valuePart, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid --expect-field %q (want PATH=VALUE)", entry)
+		}
+		path := strings.TrimSpace(pathPart)
+		if path == "" {
+			return nil, fmt.Errorf("invalid --expect-field %q (empty field path)", entry)
+		}
+		expectations = append(expectations, service.FieldExpectation{
+			Path:  path,
+			Value: strings.TrimSpace(valuePart),
+		})
+	}
+	return expectations, nil
 }
 
 // readSendPayload resolves the message bytes to put on the wire. A JSON document
@@ -798,7 +850,7 @@ func (a *App) runValidate(args []string) int {
 	strict := flagSet.Bool("strict", false, "apply best-effort BASE I message-class semantic checks (required/recommended fields)")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Validate that a message can be unpacked and highlight extension-field strategy.")
-		writeLine(flagSet.Output(), "Usage: iso8583tool validate [MESSAGE|-] [--raw HEX] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Usage: iso8583tool validate [MESSAGE|-] [--raw MESSAGE] [--strict] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(flagSet.Output(), "Without --strict, validate only checks that the message unpacks; --strict adds heuristic per-MTI field checks.")
 		printFlagDefaults(flagSet.Output(), flagSet)
@@ -861,7 +913,7 @@ func (a *App) runDoctor(args []string) int {
 	noColor := flagSet.Bool("no-color", false, "disable color (same as --color never)")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Detect which built-in spec preset fits a message.")
-		writeLine(flagSet.Output(), "Usage: iso8583tool doctor [MESSAGE|-] [--raw HEX] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Usage: iso8583tool doctor [MESSAGE|-] [--raw MESSAGE] [--encoding auto|hex|raw] [--format text|json] [--color auto|always|never]")
 		writeLine(flagSet.Output(), "Reads from stdin when MESSAGE is '-' or omitted; --raw takes an inline message instead.")
 		writeLine(flagSet.Output(), "The input encoding is auto-detected (hex text vs raw bytes); override with --encoding.")
 		writeLine(flagSet.Output(), "Tries every preset and recommends the best fit; confirm the result with view.")

@@ -10,60 +10,10 @@
 Describe 'iso8583tool send'
   Include "$SHELLSPEC_SPECDIR/spec_helper.sh"
 
-  # build_mock compiles the mock server once for the whole file. go build can
-  # write progress or cache notices to stderr (which ShellSpec would treat as a
-  # failing hook), so its output is captured and only surfaced on a real error.
-  build_mock() {
-    MOCK_DIR="$(mktemp -d)"
-    MOCK_BIN="$MOCK_DIR/mock"
-    if ! ( cd "$PROJECT_ROOT" && go build -o "$MOCK_BIN" ./spec/mock ) >"$MOCK_DIR/build.log" 2>&1; then
-      echo "failed to build the send mock server:" >&2
-      cat "$MOCK_DIR/build.log" >&2
-      return 1
-    fi
-    REPLY_HEX="$(tr -d ' \t\n\r' < "$EXAMPLES/0810-network-echo-response.hex")"
-    export MOCK_DIR MOCK_BIN REPLY_HEX
-  }
-  remove_mock() { [ -n "${MOCK_DIR:-}" ] && rm -rf "$MOCK_DIR"; }
-
+  # The mock build/start/stop helpers live in spec_helper.sh so the README spec
+  # can drive the same in-repo server.
   BeforeAll 'build_mock'
   AfterAll 'remove_mock'
-
-  # start_mock FRAMING [extra-args...] launches a fresh single-shot mock and
-  # waits until it has published its listen address into the ready file.
-  start_mock() {
-    framing="$1"
-    shift
-    READY="$WORK/ready"
-    rm -f "$READY"
-    "$MOCK_BIN" --framing "$framing" --reply-hex "$REPLY_HEX" --ready-file "$READY" "$@" >"$WORK/mock.log" 2>&1 &
-    MOCK_PID=$!
-    i=0
-    while [ ! -s "$READY" ] && [ "$i" -lt 100 ]; do
-      # If the mock died before publishing its address, fail now with its log
-      # instead of reading a stale/empty file and connecting to a bad address.
-      if ! kill -0 "$MOCK_PID" 2>/dev/null; then
-        echo "mock server exited before it was ready:" >&2
-        cat "$WORK/mock.log" >&2
-        return 1
-      fi
-      sleep 0.05
-      i=$((i + 1))
-    done
-    if [ ! -s "$READY" ]; then
-      echo "mock server did not publish its address within the timeout:" >&2
-      cat "$WORK/mock.log" >&2
-      return 1
-    fi
-    MOCK_ADDR="$(cat "$READY")"
-  }
-  stop_mock() {
-    if [ -n "${MOCK_PID:-}" ]; then
-      kill "$MOCK_PID" 2>/dev/null || true
-      wait "$MOCK_PID" 2>/dev/null || true
-      MOCK_PID=""
-    fi
-  }
 
   Describe '2byte-binary framing'
     BeforeEach 'make_workdir; start_mock 2byte-binary'
@@ -112,6 +62,26 @@ Describe 'iso8583tool send'
     End
   End
 
+  Describe 'none framing'
+    BeforeEach 'make_workdir; start_mock none'
+    AfterEach 'stop_mock; remove_workdir'
+
+    It 'sends with no length header and reads the reply until EOF'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --framing none --format json
+      The status should be success
+      The output should include '"framing": "none"'
+      The output should include '"mti": "0810"'
+    End
+
+    It 'decodes the response in describe output'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --framing none
+      The status should be success
+      The output should include 'none'
+      The output should include 'Response:'
+      The output should include '0810'
+    End
+  End
+
   Describe 'timeout'
     BeforeEach 'make_workdir; start_mock 2byte-binary --no-reply'
     AfterEach 'stop_mock; remove_workdir'
@@ -120,6 +90,51 @@ Describe 'iso8583tool send'
       When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --framing 2byte-binary --timeout 600ms
       The status should be failure
       The stderr should include 'timed out'
+    End
+  End
+
+  Describe 'none framing timeout'
+    BeforeEach 'make_workdir; start_mock none --no-reply'
+    AfterEach 'stop_mock; remove_workdir'
+
+    It 'exits non-zero when a none-framing peer never replies'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --framing none --timeout 600ms
+      The status should be failure
+      The stderr should include 'timed out'
+    End
+  End
+
+  Describe 'expectations'
+    BeforeEach 'make_workdir; start_mock 2byte-binary'
+    AfterEach 'stop_mock; remove_workdir'
+
+    It 'passes when --expect-mti and --expect-field match the response'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --expect-mti 0810 --expect-field 39=00 --expect-field 70=301
+      The status should be success
+      The output should include '0810'
+    End
+
+    It 'exits non-zero with a deterministic error on an MTI mismatch'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --expect-mti 0800
+      The status should be failure
+      # The exchange is still printed (so a failing run shows the response).
+      The output should include 'Response:'
+      The stderr should include 'send expectation failed:'
+      The stderr should include 'MTI: expected "0800", got "0810"'
+    End
+
+    It 'exits non-zero when an expected field value differs'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --expect-field 39=99
+      The status should be failure
+      The output should include 'Response:'
+      The stderr should include 'send expectation failed:'
+      The stderr should include 'F39: expected "99", got "00"'
+    End
+
+    It 'rejects an --expect-field without PATH=VALUE'
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --expect-field 39
+      The status should be failure
+      The stderr should include 'invalid --expect-field'
     End
   End
 

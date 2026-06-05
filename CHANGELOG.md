@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `send` can now assert on the decoded reply for shell-based E2E and CI without
+  piping through `jq`. `--expect-mti VALUE` checks the response MTI and the
+  repeatable `--expect-field PATH=VALUE` checks individual fields. Assertions
+  compare against the decoded, unmasked canonical values (so an expectation on a
+  masked field such as a PAN still matches its real value), and any mismatch
+  prints a deterministic `expected … got …` error on stderr and exits non-zero.
+  Runs without expectation flags behave exactly as before.
+
+### Changed
+
+- `send`, `redact`, `validate`, and `doctor` usage now documents `--raw` as
+  `--raw MESSAGE` (an inline JSON document or a hex/raw message), not the
+  misleading `--raw HEX`. Inline JSON via `--raw` already worked for `send`;
+  the wording now matches.
+
+### Fixed
+
+- Extended the `send` `--framing none` coverage: unit, cmd-level, and ShellSpec
+  end-to-end tests now exercise both the success path (no length header; the
+  request half-closes and the reply is read until EOF) and the timeout path over
+  the real CLI, not only the service helper. The README `send` quick-start and
+  `jq` examples (now including `--framing none`, `--raw`, and the `--expect-*`
+  assertions) run in ShellSpec so the documented snippets stay executable.
+
 ## [0.5.0] - 2026-06-05
 
 ### Added

@@ -9,7 +9,129 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nao1215/iso8583tool/internal/basei"
+	"github.com/nao1215/iso8583tool/internal/messageio"
 )
+
+// expectFixtureResponse packs a known 0810-style response carrying a PAN so the
+// assertion tests can prove the comparison runs against the unmasked canonical
+// value (the PAN), not the masked display string.
+func expectFixtureResponse(t *testing.T) []byte {
+	t.Helper()
+	doc := messageio.Document{
+		MTI: "0810",
+		Fields: map[string]string{
+			"2":  "4111111111111111",
+			"39": "00",
+			"70": "301",
+		},
+	}
+	result, err := WriteMessage(doc, basei.StarterMessageSpec())
+	if err != nil {
+		t.Fatalf("pack expectation fixture: %v", err)
+	}
+	return result.Raw
+}
+
+func TestCheckExpectationsMTIAndFieldsPass(t *testing.T) {
+	t.Parallel()
+	resp := expectFixtureResponse(t)
+	failures, err := CheckExpectations(basei.StarterMessageSpec(), resp, "0810", []FieldExpectation{
+		{Path: "39", Value: "00"},
+		{Path: "70", Value: "301"},
+	})
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(failures) != 0 {
+		t.Fatalf("expected no failures, got %+v", failures)
+	}
+}
+
+func TestCheckExpectationsComparesUnmaskedCanonicalValue(t *testing.T) {
+	t.Parallel()
+	resp := expectFixtureResponse(t)
+	// The display value of the PAN is masked (411111******1111); the expectation
+	// must compare against the unmasked canonical value instead.
+	failures, err := CheckExpectations(basei.StarterMessageSpec(), resp, "", []FieldExpectation{
+		{Path: "2", Value: "4111111111111111"},
+	})
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(failures) != 0 {
+		t.Fatalf("expected the unmasked PAN to match, got %+v", failures)
+	}
+
+	// The masked display string must NOT satisfy the assertion.
+	masked, err := CheckExpectations(basei.StarterMessageSpec(), resp, "", []FieldExpectation{
+		{Path: "2", Value: "411111******1111"},
+	})
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(masked) != 1 {
+		t.Fatalf("expected the masked display string to fail the assertion, got %+v", masked)
+	}
+}
+
+func TestCheckExpectationsMTIMismatch(t *testing.T) {
+	t.Parallel()
+	resp := expectFixtureResponse(t)
+	failures, err := CheckExpectations(basei.StarterMessageSpec(), resp, "0800", nil)
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(failures) != 1 {
+		t.Fatalf("expected one MTI failure, got %+v", failures)
+	}
+	f := failures[0]
+	if f.Expected != "0800" || f.Actual != "0810" || !f.Present {
+		t.Errorf("unexpected MTI failure: %+v", f)
+	}
+	if !strings.Contains(f.String(), "0800") || !strings.Contains(f.String(), "0810") {
+		t.Errorf("failure string should show expected vs actual: %q", f.String())
+	}
+}
+
+func TestCheckExpectationsFieldMismatch(t *testing.T) {
+	t.Parallel()
+	resp := expectFixtureResponse(t)
+	failures, err := CheckExpectations(basei.StarterMessageSpec(), resp, "", []FieldExpectation{
+		{Path: "39", Value: "01"},
+	})
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(failures) != 1 {
+		t.Fatalf("expected one field failure, got %+v", failures)
+	}
+	f := failures[0]
+	if f.Expected != "01" || f.Actual != "00" || !f.Present {
+		t.Errorf("unexpected field failure: %+v", f)
+	}
+}
+
+func TestCheckExpectationsFieldMissing(t *testing.T) {
+	t.Parallel()
+	resp := expectFixtureResponse(t)
+	failures, err := CheckExpectations(basei.StarterMessageSpec(), resp, "", []FieldExpectation{
+		{Path: "55", Value: "anything"},
+	})
+	if err != nil {
+		t.Fatalf("CheckExpectations: %v", err)
+	}
+	if len(failures) != 1 {
+		t.Fatalf("expected one missing-field failure, got %+v", failures)
+	}
+	if failures[0].Present {
+		t.Errorf("missing field should report Present=false: %+v", failures[0])
+	}
+	if !strings.Contains(failures[0].String(), "not present") {
+		t.Errorf("missing-field string should say it is not present: %q", failures[0].String())
+	}
+}
 
 func TestParseFraming(t *testing.T) {
 	t.Parallel()

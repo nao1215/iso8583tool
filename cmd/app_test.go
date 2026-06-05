@@ -425,16 +425,16 @@ func TestHelpUsageStrings(t *testing.T) {
 	t.Parallel()
 
 	_, redactHelp, _ := runApp("", "help", "redact")
-	if !strings.Contains(redactHelp, "[--raw HEX]") {
-		t.Fatalf("redact usage should document --raw:\n%s", redactHelp)
+	if !strings.Contains(redactHelp, "[--raw MESSAGE]") {
+		t.Fatalf("redact usage should document --raw as an inline message:\n%s", redactHelp)
 	}
 	if !strings.Contains(redactHelp, "[--color auto|always|never]") {
 		t.Fatalf("redact usage should document --color:\n%s", redactHelp)
 	}
 
 	_, validateHelp, _ := runApp("", "help", "validate")
-	if !strings.Contains(validateHelp, "[--raw HEX]") {
-		t.Fatalf("validate usage should document --raw:\n%s", validateHelp)
+	if !strings.Contains(validateHelp, "[--raw MESSAGE]") {
+		t.Fatalf("validate usage should document --raw as an inline message:\n%s", validateHelp)
 	}
 
 	_, convertHelp, _ := runApp("", "help", "convert")

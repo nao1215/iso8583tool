@@ -50,3 +50,67 @@ remove_workdir() {
     rm -rf "$WORK"
   fi
 }
+
+# --- send mock server helpers -------------------------------------------------
+#
+# The send command needs a live TCP peer. spec/mock is a deterministic,
+# single-shot, 127.0.0.1-only server that reuses the production framing code: it
+# reads one framed request and replies with a fixed 0810 response framed the same
+# way. These helpers build it once and start a fresh instance per example, so
+# both send_spec.sh and readme_spec.sh drive the real wire path without an
+# external network and without flaking.
+
+# build_mock compiles the mock once. go build can write progress/cache notices to
+# stderr (which ShellSpec treats as a failing hook), so its output is captured
+# and only surfaced on a real error.
+build_mock() {
+  MOCK_DIR="$(mktemp -d)"
+  MOCK_BIN="$MOCK_DIR/mock"
+  if ! ( cd "$PROJECT_ROOT" && go build -o "$MOCK_BIN" ./spec/mock ) >"$MOCK_DIR/build.log" 2>&1; then
+    echo "failed to build the send mock server:" >&2
+    cat "$MOCK_DIR/build.log" >&2
+    return 1
+  fi
+  REPLY_HEX="$(tr -d ' \t\n\r' < "$EXAMPLES/0810-network-echo-response.hex")"
+  export MOCK_DIR MOCK_BIN REPLY_HEX
+}
+
+remove_mock() { [ -n "${MOCK_DIR:-}" ] && rm -rf "$MOCK_DIR"; }
+
+# start_mock FRAMING [extra-args...] launches a fresh single-shot mock and waits
+# until it has published its listen address into the ready file. Requires a
+# per-example WORK dir (call make_workdir first).
+start_mock() {
+  framing="$1"
+  shift
+  READY="$WORK/ready"
+  rm -f "$READY"
+  "$MOCK_BIN" --framing "$framing" --reply-hex "$REPLY_HEX" --ready-file "$READY" "$@" >"$WORK/mock.log" 2>&1 &
+  MOCK_PID=$!
+  i=0
+  while [ ! -s "$READY" ] && [ "$i" -lt 100 ]; do
+    # If the mock died before publishing its address, fail now with its log
+    # instead of reading a stale/empty file and connecting to a bad address.
+    if ! kill -0 "$MOCK_PID" 2>/dev/null; then
+      echo "mock server exited before it was ready:" >&2
+      cat "$WORK/mock.log" >&2
+      return 1
+    fi
+    sleep 0.05
+    i=$((i + 1))
+  done
+  if [ ! -s "$READY" ]; then
+    echo "mock server did not publish its address within the timeout:" >&2
+    cat "$WORK/mock.log" >&2
+    return 1
+  fi
+  MOCK_ADDR="$(cat "$READY")"
+}
+
+stop_mock() {
+  if [ -n "${MOCK_PID:-}" ]; then
+    kill "$MOCK_PID" 2>/dev/null || true
+    wait "$MOCK_PID" 2>/dev/null || true
+    MOCK_PID=""
+  fi
+}
