@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `send` command: send a single ISO 8583 message to a host over TCP and
+  decode the one response. It opens one connection, writes one framed request,
+  reads one framed response, and reports the destination, framing, byte counts,
+  RTT, and the decoded request/response views. Input is a JSON document (packed
+  with the active spec) or an already-packed hex/raw message, read from a file,
+  `-`, stdin, or `--raw`. `--framing` selects `2byte-binary` (default, 2-byte
+  big-endian length prefix), `4digit-ascii` (4-digit ASCII length header), or
+  `none` (no header; read until EOF or `--timeout`). Cardholder data is masked by
+  default like `view`; `--unsafe` reveals raw values, including the raw wire hex
+  in `--format json`. There is no listener, session, retry, or sign-on logic —
+  it is a focused probe for a test endpoint or simulator, not a switch.
+
 ## [0.4.0] - 2026-06-05
 
 This release works through a wide backlog of correctness, ergonomics, safety, and
