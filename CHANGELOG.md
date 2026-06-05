@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `view`, `validate`, `convert`, `diff`, and `redact` now default to
+  `--encoding auto`, the same fit-based hex/raw detection `doctor` uses. A raw
+  `*.bin` capture, and an all-numeric raw ASCII message that is byte-for-byte a
+  valid hex string, are read correctly without `--encoding raw`. An explicit
+  `--encoding hex|raw` still overrides the detection.
+
 ### Fixed
 
 - `convert --output` now reports the top-level ISO field count in its

@@ -9,8 +9,10 @@
 Describe 'iso8583tool edge cases'
   Include "$SHELLSPEC_SPECDIR/spec_helper.sh"
 
-  It 'rejects non-hex characters'
-    When run iso8583tool view --raw 'zzzz'
+  It 'rejects non-hex characters under --encoding hex'
+    # The default --encoding auto reads non-hex input as raw; an explicit hex
+    # encoding still reports the bad input as a hex error.
+    When run iso8583tool view --encoding hex --raw 'zzzz'
     The status should be failure
     The stderr should include 'hex'
   End
