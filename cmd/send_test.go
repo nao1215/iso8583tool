@@ -35,7 +35,14 @@ func startEchoServer(t *testing.T, framing service.Framing, replyPayload []byte)
 		if err != nil {
 			return
 		}
-		_, _ = conn.Write(framed)
+		// Loop over short writes so the full frame always reaches the client.
+		for len(framed) > 0 {
+			n, err := conn.Write(framed)
+			if err != nil || n == 0 {
+				return
+			}
+			framed = framed[n:]
+		}
 	}()
 	return ln.Addr().String()
 }

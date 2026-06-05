@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,6 +146,20 @@ func TestFramingNoneReturnsBytesReadBeforeTimeout(t *testing.T) {
 	}
 }
 
+func TestFramingNoneRejectsOversizedResponse(t *testing.T) {
+	t.Parallel()
+	// A peer that keeps sending with no length header must not grow the buffer
+	// without bound: once past the cap the read fails instead of accumulating.
+	oversized := bytes.NewReader(make([]byte, maxUnframedResponseBytes+1))
+	_, err := FramingNone.ReadResponse(oversized)
+	if err == nil {
+		t.Fatal("expected an over-limit error for an oversized none-framing response")
+	}
+	if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("error %q does not mention the limit", err)
+	}
+}
+
 func TestFramingNoneTimesOutWithNoBytes(t *testing.T) {
 	t.Parallel()
 	client, server := net.Pipe()
@@ -163,7 +178,7 @@ func TestFramingNoneTimesOutWithNoBytes(t *testing.T) {
 }
 
 // chunkWriter writes at most one byte per call so writeAll has to loop to send
-// a whole frame, modelling a net.Conn that returns short writes.
+// a whole frame, modeling a net.Conn that returns short writes.
 type chunkWriter struct{ buf bytes.Buffer }
 
 func (w *chunkWriter) Write(p []byte) (int, error) {

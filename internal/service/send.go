@@ -130,16 +130,26 @@ func headerReadError(err error) error {
 	return err
 }
 
+// maxUnframedResponseBytes caps a none-framing response. Without a length header
+// the read runs until EOF, so a misbehaving or hostile peer could otherwise grow
+// the buffer without bound; 1 MiB matches messageio's input ceiling and is far
+// larger than any real ISO 8583 message.
+const maxUnframedResponseBytes = 1 << 20 // 1 MiB
+
 // readUntilEOF reads from r until EOF. If a read deadline fires after some bytes
 // have already arrived, the bytes read so far are returned (a no-framing peer
 // may simply stop writing); a deadline with no bytes is reported as an error so
-// a stalled connection surfaces as a timeout.
+// a stalled connection surfaces as a timeout. The total is capped at
+// maxUnframedResponseBytes so an endless stream cannot exhaust memory.
 func readUntilEOF(r io.Reader) ([]byte, error) {
 	buf := make([]byte, 0, 512)
 	tmp := make([]byte, 4096)
 	for {
 		n, err := r.Read(tmp)
 		if n > 0 {
+			if len(buf)+n > maxUnframedResponseBytes {
+				return nil, fmt.Errorf("none-framing response exceeded the %d-byte limit", maxUnframedResponseBytes)
+			}
 			buf = append(buf, tmp[:n]...)
 		}
 		if err == nil {
@@ -228,7 +238,9 @@ func SendMessage(req SendRequest) (SendResult, error) {
 	// write side closes, so half-close after writing to let it reply and EOF.
 	if req.Framing == FramingNone {
 		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
-			_ = cw.CloseWrite()
+			if err := cw.CloseWrite(); err != nil {
+				return SendResult{}, fmt.Errorf("close write side to %s: %w", req.Address, err)
+			}
 		}
 	}
 

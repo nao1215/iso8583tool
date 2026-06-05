@@ -36,13 +36,25 @@ Describe 'iso8583tool send'
     shift
     READY="$WORK/ready"
     rm -f "$READY"
-    "$MOCK_BIN" --framing "$framing" --reply-hex "$REPLY_HEX" --ready-file "$READY" "$@" >/dev/null 2>&1 &
+    "$MOCK_BIN" --framing "$framing" --reply-hex "$REPLY_HEX" --ready-file "$READY" "$@" >"$WORK/mock.log" 2>&1 &
     MOCK_PID=$!
     i=0
     while [ ! -s "$READY" ] && [ "$i" -lt 100 ]; do
+      # If the mock died before publishing its address, fail now with its log
+      # instead of reading a stale/empty file and connecting to a bad address.
+      if ! kill -0 "$MOCK_PID" 2>/dev/null; then
+        echo "mock server exited before it was ready:" >&2
+        cat "$WORK/mock.log" >&2
+        return 1
+      fi
       sleep 0.05
       i=$((i + 1))
     done
+    if [ ! -s "$READY" ]; then
+      echo "mock server did not publish its address within the timeout:" >&2
+      cat "$WORK/mock.log" >&2
+      return 1
+    fi
     MOCK_ADDR="$(cat "$READY")"
   }
   stop_mock() {

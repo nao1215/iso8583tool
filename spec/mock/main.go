@@ -72,8 +72,17 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	if _, err := conn.Write(framed); err != nil {
-		fail(err)
+	// A single Write may be short; loop so the whole frame reaches the client and
+	// the e2e tests stay deterministic.
+	for len(framed) > 0 {
+		n, err := conn.Write(framed)
+		if err != nil {
+			fail(err)
+		}
+		if n == 0 {
+			fail(fmt.Errorf("short write: wrote 0 bytes"))
+		}
+		framed = framed[n:]
 	}
 	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
 		_ = cw.CloseWrite()

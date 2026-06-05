@@ -1193,9 +1193,7 @@ func (a *App) runSample(args []string) int {
 	}
 
 	if strings.TrimSpace(*outputPath) != "" {
-		// The destination is an explicit --output flag chosen by the operator of
-		// this local CLI; there is no privilege boundary to traverse.
-		if err := os.WriteFile(filepath.Clean(*outputPath), data, 0o600); err != nil { //nolint:gosec // operator-supplied --output path on a local CLI
+		if err := os.WriteFile(filepath.Clean(*outputPath), data, 0o600); err != nil {
 			writeLine(a.stderr, err)
 			return 1
 		}
