@@ -30,6 +30,10 @@ type DiffEntry struct {
 // DiffResult is the ordered set of differences between two messages.
 type DiffResult struct {
 	Changes []DiffEntry `json:"changes"`
+	// MissingFilters lists the requested filters that did not select any field
+	// present in either message, so a typo is distinguishable from a real
+	// no-change result. It is omitted when every filter matched something.
+	MissingFilters []string `json:"missing_filters,omitempty"`
 }
 
 // DiffMessages unpacks two messages and compares them by logical field path
@@ -63,7 +67,7 @@ func DiffMessages(spec *iso8583.MessageSpec, before, after []byte, filters []str
 	paths := unionPaths(beforeMap, afterMap)
 	sortPaths(paths)
 
-	result := DiffResult{}
+	result := DiffResult{MissingFilters: unmatchedFilters(paths, filters)}
 	for _, path := range paths {
 		if !matchesAnyFilter(path, filters) {
 			continue
@@ -142,11 +146,45 @@ func matchesAnyFilter(path string, filters []string) bool {
 		return true
 	}
 	for _, f := range filters {
-		if path == f || strings.HasPrefix(path, f+".") {
+		if pathSelectedByFilter(path, f) {
 			return true
 		}
 	}
 	return false
+}
+
+// unmatchedFilters returns the filters that did not select any of the given
+// paths, preserving the caller's order. It is empty when every filter matched.
+func unmatchedFilters(paths, filters []string) []string {
+	var missing []string
+	for _, f := range filters {
+		matched := false
+		for _, path := range paths {
+			if pathSelectedByFilter(path, f) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			missing = append(missing, f)
+		}
+	}
+	return missing
+}
+
+// pathSelectedByFilter reports whether logical path is selected by filter f.
+// Hex EMV tags are matched case-insensitively (so "55.9f02" and "55.9F02" are
+// the same path), and "0" and "mti" are both accepted as the MTI pseudo-path.
+func pathSelectedByFilter(path, f string) bool {
+	p := strings.ToUpper(strings.TrimSpace(path))
+	fu := strings.ToUpper(strings.TrimSpace(f))
+	if p == "MTI" {
+		return fu == "MTI" || fu == "0"
+	}
+	if fu == "MTI" || fu == "0" {
+		return false
+	}
+	return p == fu || strings.HasPrefix(p, fu+".")
 }
 
 // SortPaths orders field paths deterministically for display: "mti" first, then

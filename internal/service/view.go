@@ -259,7 +259,7 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 	mtiEntry := DecodedField{Path: "0", Value: doc.MTI}
 	if doc.MTI != "" {
 		for _, f := range filters {
-			if f == "0" || f == "mti" {
+			if u := strings.ToUpper(strings.TrimSpace(f)); u == "0" || u == "MTI" {
 				matchedFilter[f] = true
 				mtiSelected = true
 			}
@@ -349,9 +349,10 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 }
 
 // matchingFilter returns the filter that selects path, or "" when none does.
+// Matching is case-insensitive on hex EMV tags so "55.9f02" selects "55.9F02".
 func matchingFilter(path string, filters []string) string {
 	for _, f := range filters {
-		if path == f || strings.HasPrefix(path, f+".") {
+		if pathSelectedByFilter(path, f) {
 			return f
 		}
 	}

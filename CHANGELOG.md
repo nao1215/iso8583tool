@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `view --filter` and `diff --filter` now match EMV tag paths case-insensitively,
+  so `55.9f02` and `55.9F02` select the same field instead of one of them
+  reporting `<not present>` or `No differences.`.
+- `diff --filter 0` now selects the MTI, matching `view` and `diff --filter mti`.
+- `diff` now reports a filter that matched no field in either message (in text as
+  `No field matched filter: ...` and in JSON as `missing_filters`), so a typo is
+  distinguishable from a real no-change result.
+
 - `convert` now tolerates a UTF-8 BOM (`EF BB BF`) at the start of a JSON
   document. Auto-detection no longer mistakes a BOM-prefixed object for hex, and
   an explicit `--to hex` no longer fails JSON parsing on the BOM. Editors and
