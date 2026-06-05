@@ -46,8 +46,11 @@ Describe 'iso8583tool doctor'
     The output should include 'No built-in preset could unpack'
   End
 
-  It 'is suggested by a validate failure'
-    When run iso8583tool validate --raw 01007220
+  It 'is suggested by a wrong-spec validate failure'
+    # A complete message that fails at a data field under the wrong spec is the
+    # case the doctor hint is for; a header-level failure is reported as
+    # truncated/corrupt instead.
+    When run iso8583tool validate "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --spec spec87bcd-starter
     The status should be failure
     The output should include 'doctor'
   End
