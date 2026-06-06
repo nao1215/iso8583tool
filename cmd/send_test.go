@@ -393,3 +393,93 @@ func TestSendExpectFieldRejectsMissingEquals(t *testing.T) {
 		t.Errorf("expected an invalid --expect-field error, got %q", errOut)
 	}
 }
+
+func TestSendDryRunDescribeNeverConnects(t *testing.T) {
+	t.Parallel()
+	// Port 1 has nothing listening; a live send would fail to connect. --dry-run
+	// must still succeed because it packs and frames without opening a connection.
+	code, out, errOut := runApp("", "send", "127.0.0.1:1", example("0800-network-echo.hex"), "--dry-run", "--color", "never")
+	if code != 0 {
+		t.Fatalf("dry-run should not connect: code=%d err=%q", code, errOut)
+	}
+	for _, want := range []string{"Dry run", "Target:", "127.0.0.1:1", "Framing:", "Would send bytes:", "Request:", "0800"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run describe output missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestSendDryRunJSONShape(t *testing.T) {
+	t.Parallel()
+	code, out, errOut := runApp("", "send", "127.0.0.1:1", example("0800-network-echo.hex"), "--dry-run", "--format", "json")
+	if code != 0 {
+		t.Fatalf("dry-run json: code=%d err=%q", code, errOut)
+	}
+	var payload struct {
+		DryRun         bool   `json:"dry_run"`
+		Target         string `json:"target"`
+		Framing        string `json:"framing"`
+		WouldSendBytes int    `json:"would_send_bytes"`
+		Request        struct {
+			Hex   string `json:"hex"`
+			Bytes int    `json:"bytes"`
+		} `json:"request"`
+		RequestView struct {
+			MTI string `json:"mti"`
+		} `json:"request_view"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal dry-run json: %v\n%s", err, out)
+	}
+	if !payload.DryRun {
+		t.Error("dry_run should be true")
+	}
+	if payload.Target != "127.0.0.1:1" {
+		t.Errorf("target = %q", payload.Target)
+	}
+	if payload.RequestView.MTI != "0800" {
+		t.Errorf("request_view.mti = %q, want 0800", payload.RequestView.MTI)
+	}
+	// The framed total includes the 2-byte header, so it exceeds the payload bytes.
+	if payload.WouldSendBytes <= payload.Request.Bytes {
+		t.Errorf("would_send_bytes (%d) should exceed request.bytes (%d)", payload.WouldSendBytes, payload.Request.Bytes)
+	}
+	// Raw wire hex is withheld by default.
+	if payload.Request.Hex != "" {
+		t.Errorf("raw wire hex must be withheld without --unsafe: %q", payload.Request.Hex)
+	}
+}
+
+func TestSendDryRunUnsafeRevealsWireHex(t *testing.T) {
+	t.Parallel()
+	_, panHex := panFixtureReply(t)
+	code, out, errOut := runApp("", "send", "127.0.0.1:1", example("0100-auth-request.hex"), "--dry-run", "--format", "json", "--unsafe")
+	if code != 0 {
+		t.Fatalf("dry-run --unsafe json: code=%d err=%q", code, errOut)
+	}
+	if !strings.Contains(strings.ToUpper(out), panHex) {
+		t.Errorf("--unsafe dry-run should include the raw request hex (%s)\n%s", panHex, out)
+	}
+}
+
+func TestSendDryRunRejectsExpectations(t *testing.T) {
+	t.Parallel()
+	code, _, errOut := runApp("", "send", "127.0.0.1:1", example("0800-network-echo.hex"), "--dry-run", "--expect-mti", "0810")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 when --dry-run is combined with expectations", code)
+	}
+	if !strings.Contains(errOut, "dry-run") {
+		t.Errorf("error should explain the dry-run conflict: %q", errOut)
+	}
+}
+
+func TestSendRejectsInvalidAddress(t *testing.T) {
+	t.Parallel()
+	code, _, errOut := runApp("", "send", "127.0.0.1", example("0800-network-echo.hex"), "--timeout", "500ms")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 on a missing port", code)
+	}
+	if !strings.Contains(errOut, "invalid address") {
+		t.Errorf("expected an invalid-address error, got %q", errOut)
+	}
+}

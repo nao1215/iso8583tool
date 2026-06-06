@@ -138,11 +138,44 @@ Describe 'iso8583tool send'
     End
   End
 
+  Describe 'dry run'
+    # --dry-run never opens a connection, so these need no mock server. Port 1 has
+    # nothing listening; a live send would fail to connect, but --dry-run succeeds.
+    It 'frames and prints the request without connecting'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run
+      The status should be success
+      The output should include 'Dry run'
+      The output should include 'Would send bytes:'
+      The output should include 'Request:'
+      The output should include '0800'
+    End
+
+    It 'emits a machine-readable dry-run record'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run --format json
+      The status should be success
+      The output should include '"dry_run": true'
+      The output should include '"would_send_bytes"'
+      The output should include '"mti": "0800"'
+    End
+
+    It 'rejects expectations because there is no response to assert'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run --expect-mti 0810
+      The status should be failure
+      The stderr should include 'dry-run'
+    End
+  End
+
   Describe 'invalid arguments'
     It 'rejects an invalid --framing value'
       When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --framing bogus
       The status should be failure
       The stderr should include 'invalid --framing'
+    End
+
+    It 'rejects a HOST:PORT without a port'
+      When run iso8583tool send 127.0.0.1 "$EXAMPLES/0800-network-echo.hex" --timeout 500ms
+      The status should be failure
+      The stderr should include 'invalid address'
     End
   End
 

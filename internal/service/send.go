@@ -209,10 +209,32 @@ type SendResult struct {
 	RTT           time.Duration
 }
 
+// ValidateAddress checks that addr is a usable HOST:PORT before any connection
+// is attempted. It gives the send command's --dry-run path (which never dials)
+// a way to flag a malformed address, and the normal path an early, readable
+// failure instead of a dial error buried in net package wording.
+func ValidateAddress(addr string) error {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return fmt.Errorf("invalid address %q (want HOST:PORT, e.g. 127.0.0.1:8583): %w", addr, err)
+	}
+	if host == "" {
+		return fmt.Errorf("invalid address %q (missing host before the port)", addr)
+	}
+	if port == "" {
+		return fmt.Errorf("invalid address %q (missing port after the host)", addr)
+	}
+	return nil
+}
+
 // SendMessage opens a single TCP connection, writes one framed request, reads
 // one framed response, and returns the timing and byte counts. Each failure
 // (connect, send, receive) is wrapped so the caller can report what failed.
 func SendMessage(req SendRequest) (SendResult, error) {
+	if err := ValidateAddress(req.Address); err != nil {
+		return SendResult{}, err
+	}
+
 	framed, err := req.Framing.Encode(req.Payload)
 	if err != nil {
 		return SendResult{}, err
