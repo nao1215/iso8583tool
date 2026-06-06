@@ -232,6 +232,13 @@ inline message — a JSON document or a hex/raw string — not hex only.
 `--timeout` (default `5s`) bounds the connect and read. The request and response
 are masked by default like [`view`](#view); `--unsafe` shows raw values.
 
+`--dry-run` packs and frames the request, prints exactly what *would* be sent
+(the framing, the wire byte count, and the decoded request view), then exits
+without opening a connection. It is the fast way to confirm a message packs under
+the active spec — and to inspect the framed bytes — before a real run; in an E2E
+script you can keep the same command line and just drop the flag for the live
+send. A malformed `HOST:PORT` is reported the same way with or without the flag.
+
 For shell-based E2E or CI, assert on the decoded reply without piping through
 `jq`: `--expect-mti VALUE` checks the response MTI, and `--expect-field
 PATH=VALUE` (repeatable) checks a field. Assertions compare against the decoded,
@@ -251,6 +258,9 @@ iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex --framing n
 
 # Pass an inline message with --raw (JSON here; hex/raw also work).
 iso8583tool send 127.0.0.1:8583 --raw '{"mti":"0800","fields":{"70":"301"}}'
+
+# Verify the message packs and frames without sending it (no connection opened).
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex --dry-run
 
 # Assert the reply in CI: a non-zero exit on any mismatch, no jq required.
 iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex \

@@ -354,6 +354,50 @@ func TestWriteAllPropagatesError(t *testing.T) {
 	}
 }
 
+func TestValidateAddress(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in string
+		ok bool
+	}{
+		{"127.0.0.1:8583", true},
+		{"localhost:0", true},
+		{"[::1]:8583", true},
+		{" 127.0.0.1:8583 ", true},
+		{"127.0.0.1", false},   // missing port
+		{":8583", false},       // missing host
+		{"127.0.0.1:", false},  // missing port number
+		{"", false},            // empty
+		{"host:port:x", false}, // malformed
+	}
+	for _, tc := range cases {
+		err := ValidateAddress(tc.in)
+		if tc.ok && err != nil {
+			t.Errorf("ValidateAddress(%q) returned error: %v", tc.in, err)
+		}
+		if !tc.ok && err == nil {
+			t.Errorf("ValidateAddress(%q) expected an error", tc.in)
+		}
+	}
+}
+
+func TestSendMessageRejectsInvalidAddress(t *testing.T) {
+	t.Parallel()
+	// A missing port is caught before any dial is attempted.
+	_, err := SendMessage(SendRequest{
+		Address: "127.0.0.1",
+		Payload: []byte{0x00},
+		Framing: Framing2ByteBinary,
+		Timeout: time.Second,
+	})
+	if err == nil {
+		t.Fatal("expected an invalid-address error")
+	}
+	if !strings.Contains(err.Error(), "invalid address") {
+		t.Errorf("error %q does not flag the invalid address", err)
+	}
+}
+
 func TestSendMessageConnectErrorIsWrapped(t *testing.T) {
 	t.Parallel()
 	// Port 0 is not connectable; the error must name what failed and the address.

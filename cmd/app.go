@@ -603,10 +603,12 @@ func (a *App) runSend(args []string) int {
 	expectMTI := flagSet.String("expect-mti", "", "assert the response MTI equals VALUE; mismatch exits non-zero")
 	var expectFields multiFlag
 	flagSet.Var(&expectFields, "expect-field", "assert a response field equals a value, PATH=VALUE (repeatable, e.g. --expect-field 39=00)")
+	dryRun := flagSet.Bool("dry-run", false, "build and show the framed request without connecting or sending")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Send an ISO8583 message over TCP and decode the single response.")
-		writeLine(flagSet.Output(), "Usage: iso8583tool send HOST:PORT [MESSAGE|-] [--raw MESSAGE] [--framing 2byte-binary|4digit-ascii|none] [--timeout DURATION] [--expect-mti VALUE] [--expect-field PATH=VALUE ...] [--encoding auto|hex|raw] [--format describe|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
+		writeLine(flagSet.Output(), "Usage: iso8583tool send HOST:PORT [MESSAGE|-] [--raw MESSAGE] [--framing 2byte-binary|4digit-ascii|none] [--timeout DURATION] [--dry-run] [--expect-mti VALUE] [--expect-field PATH=VALUE ...] [--encoding auto|hex|raw] [--format describe|json] [--unsafe] [--spec NAME|PATH] [--config PATH] [--color auto|always|never]")
 		writeLine(flagSet.Output(), "MESSAGE is a JSON document (packed with the active spec) or a packed hex/raw message; reads from stdin when MESSAGE is '-' or omitted. --raw takes an inline message (JSON or hex/raw) instead of a file argument.")
+		writeLine(flagSet.Output(), "--dry-run packs and frames the request, prints what would be sent, and exits without opening a connection (useful for verifying a message before a real run).")
 		writeLine(flagSet.Output(), "--expect-mti / --expect-field assert against the decoded, unmasked canonical response values; any mismatch prints a deterministic error and exits non-zero.")
 		writeLine(flagSet.Output(), "Cardholder data is masked by default; pass --unsafe to show raw values.")
 		printFlagDefaults(flagSet.Output(), flagSet)
@@ -659,6 +661,17 @@ func (a *App) runSend(args []string) int {
 	if err != nil {
 		writeLine(a.stderr, fmt.Errorf("decode request with %s: %w", ctx.specLabel, err))
 		return 1
+	}
+
+	// Validate the address before any connection so a malformed HOST:PORT fails
+	// the same way whether or not --dry-run is set.
+	if err := service.ValidateAddress(address); err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+
+	if *dryRun {
+		return a.runSendDryRun(address, framing, *timeout, *format, ctx.specLabel, payload, reqView, *expectMTI, expectations, *unsafe, a.palette(mode, *format))
 	}
 
 	result, err := service.SendMessage(service.SendRequest{
@@ -828,6 +841,78 @@ func (a *App) printSendJSON(result service.SendResult, framing string, timeout t
 		Response:      responsePayload,
 		RequestView:   json.RawMessage(req.Body),
 		ResponseView:  json.RawMessage(resp.Body),
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+	writef(a.stdout, "%s\n", data)
+	return 0
+}
+
+// runSendDryRun packs and frames the request, reports what would be sent, and
+// returns without opening a connection. Expectations cannot be evaluated because
+// no response is received, so combining them with --dry-run is rejected rather
+// than silently ignored.
+func (a *App) runSendDryRun(address string, framing service.Framing, timeout time.Duration, format, specLabel string, payload []byte, reqView service.ViewResult, expectMTI string, expectations []service.FieldExpectation, unsafe bool, pal render.Palette) int {
+	if strings.TrimSpace(expectMTI) != "" || len(expectations) > 0 {
+		writeLine(a.stderr, errors.New("--expect-mti/--expect-field cannot be used with --dry-run: no response is received to assert against"))
+		return 1
+	}
+	framed, err := framing.Encode(payload)
+	if err != nil {
+		writeLine(a.stderr, err)
+		return 1
+	}
+	if format == "json" {
+		return a.printSendDryRunJSON(address, string(framing), timeout, payload, framed, reqView, unsafe)
+	}
+	a.printSendDryRunDescribe(address, string(framing), specLabel, framed, reqView, pal)
+	return 0
+}
+
+func (a *App) printSendDryRunDescribe(address, framing, specLabel string, framed []byte, req service.ViewResult, pal render.Palette) {
+	writef(a.stdout, "%s\n", pal.BoldCyan("Dry run (no message sent)"))
+	writef(a.stdout, "%s %s\n", pal.Dim("Target:"), pal.Bold(address))
+	writef(a.stdout, "%s %s\n", pal.Dim("Framing:"), pal.Cyan(framing))
+	writef(a.stdout, "%s %s\n", pal.Dim("Spec:"), pal.Bold(specLabel))
+	writef(a.stdout, "%s %d\n", pal.Dim("Would send bytes:"), len(framed))
+	a.printSendSide("Request", req, pal)
+}
+
+func (a *App) printSendDryRunJSON(address, framing string, timeout time.Duration, payload, framed []byte, req service.ViewResult, unsafe bool) int {
+	// Mirror the live JSON shape: byte counts always stay; the raw wire hex (which
+	// carries PAN/track/PIN in the clear) is withheld unless --unsafe is set.
+	type payloadJSON struct {
+		Hex   string `json:"hex,omitempty"`
+		Bytes int    `json:"bytes"`
+	}
+	requestPayload := payloadJSON{Bytes: len(payload)}
+	if unsafe {
+		requestHex, err := messageio.EncodeOutput(payload, "hex")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		requestPayload.Hex = string(requestHex)
+	}
+	out := struct {
+		DryRun         bool            `json:"dry_run"`
+		Target         string          `json:"target"`
+		Framing        string          `json:"framing"`
+		Timeout        string          `json:"timeout"`
+		WouldSendBytes int             `json:"would_send_bytes"`
+		Request        payloadJSON     `json:"request"`
+		RequestView    json.RawMessage `json:"request_view"`
+	}{
+		DryRun:         true,
+		Target:         address,
+		Framing:        framing,
+		Timeout:        timeout.String(),
+		WouldSendBytes: len(framed),
+		Request:        requestPayload,
+		RequestView:    json.RawMessage(req.Body),
 	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

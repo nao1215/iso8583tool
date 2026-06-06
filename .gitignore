@@ -17,6 +17,11 @@
 *.coverprofile
 profile.cov
 
+# rapid (property-based testing) failure reproduction files. These are
+# machine-generated when a property fails and are not meant to be committed;
+# a reproducible case worth keeping should become an explicit test instead.
+**/testdata/rapid/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
