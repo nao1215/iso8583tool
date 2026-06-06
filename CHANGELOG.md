@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-06
+
+### Added
+
+- `send --dry-run` packs and frames the request, prints exactly what would be
+  sent (the framing, the wire byte count, and the decoded request view — plus
+  the raw wire `hex` under `--unsafe`), then exits without opening a connection.
+  It is the fast way to confirm a message packs under the active spec and to
+  inspect the framed bytes before a real run; in an E2E script the same command
+  line works with or without the flag. Combining it with `--expect-mti` /
+  `--expect-field` is rejected, since there is no response to assert against.
+
+### Changed
+
+- `send` now validates the target `HOST:PORT` before connecting (new
+  `service.ValidateAddress`). A malformed address — a missing port, for example —
+  fails early with a clear `invalid address …` message instead of a dial error
+  buried in net-package wording, and fails the same way on the `--dry-run` path
+  that never dials.
+
+### Fixed
+
+- Stopped tracking rapid (property-based testing) failure-reproduction files:
+  `**/testdata/rapid/` is now git-ignored and the stale `.fail` artifacts were
+  removed. These are machine-generated when a property fails and are not meant to
+  be committed; a reproducible case worth keeping should become an explicit test.
+
 ## [0.5.1] - 2026-06-05
 
 ### Added
@@ -370,7 +397,8 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/nao1215/iso8583tool/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/nao1215/iso8583tool/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nao1215/iso8583tool/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nao1215/iso8583tool/compare/v0.3.0...v0.4.0
