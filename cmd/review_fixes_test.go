@@ -202,7 +202,7 @@ func TestSendDryRunHelpDocumentsUnsafeFramedBytes(t *testing.T) {
 	}
 	low := strings.ToLower(out)
 	if !strings.Contains(low, "framed") {
-		t.Errorf("send help should describe the framed-bytes behaviour\n%s", out)
+		t.Errorf("send help should describe the framed-bytes behavior\n%s", out)
 	}
 	if !strings.Contains(low, "unsafe") {
 		t.Errorf("send help should mention --unsafe reveals the framed bytes\n%s", out)
