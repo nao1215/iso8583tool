@@ -51,6 +51,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	extensions := activeExtensions(msg.GetFields(), catalog)
 	decoded := DecodeFields(msg)
 	summary := Summarize(msg)
+	builtinSemantics := basei.IsBuiltinMessageSpec(spec)
 
 	// The complete, display-masked field listing (used by send's describe view so
 	// every present field is visible, not only the annotated codes). It is built
@@ -58,7 +59,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	// that cannot be produced simply leaves the listing empty.
 	var allFields []DecodedField
 	if fieldsDoc, derr := MessageToDocument(spec, raw); derr == nil {
-		allFields = displayFields(msg, fieldsDoc, unknownTags, unsafe, basei.IsBuiltinMessageSpec(spec))
+		allFields = displayFields(msg, fieldsDoc, unknownTags, unsafe, builtinSemantics)
 	}
 
 	// Unknown TLV tags carry partner-defined data the spec cannot vouch for
@@ -72,7 +73,6 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 
 	// maskForDisplay applies the default masking unless the caller opted into raw
 	// output, so the filtered and json branches share one masking decision.
-	builtinSemantics := basei.IsBuiltinMessageSpec(spec)
 	maskForDisplay := func(doc *messageio.Document) {
 		if unsafe {
 			return
