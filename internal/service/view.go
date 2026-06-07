@@ -25,6 +25,12 @@ type ViewResult struct {
 	Extensions  []basei.ExtensionField
 	UnknownTags []UnknownTag
 	Decoded     []DecodedField
+	// Fields is every present leaf field, in display order, with cardholder data
+	// masked unless unsafe was set. Unlike Decoded (only the codes that map to a
+	// human meaning), it is the complete listing send shows so a fault
+	// investigation does not miss a field that carries no decoded meaning
+	// (F37/F38/F41/F42/F48/F63, …).
+	Fields []DecodedField
 }
 
 // DecodedField is a coded value translated into a human meaning.
@@ -45,6 +51,15 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	extensions := activeExtensions(msg.GetFields(), catalog)
 	decoded := DecodeFields(msg)
 	summary := Summarize(msg)
+
+	// The complete, display-masked field listing (used by send's describe view so
+	// every present field is visible, not only the annotated codes). It is built
+	// from a fresh document and never mutates the masking flows below; a document
+	// that cannot be produced simply leaves the listing empty.
+	var allFields []DecodedField
+	if fieldsDoc, derr := MessageToDocument(spec, raw); derr == nil {
+		allFields = displayFields(msg, fieldsDoc, unknownTags, unsafe, basei.IsBuiltinMessageSpec(spec))
+	}
 
 	// Unknown TLV tags carry partner-defined data the spec cannot vouch for
 	// (e.g. an unmapped Track 2 tag holding a PAN), so every display surface
@@ -76,7 +91,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 		if err != nil {
 			return ViewResult{}, err
 		}
-		return ViewResult{Body: body, Summary: summary, Decoded: decoded}, nil
+		return ViewResult{Body: body, Summary: summary, Decoded: decoded, Fields: allFields}, nil
 	}
 
 	switch format {
@@ -105,6 +120,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			Extensions:  extensions,
 			UnknownTags: displayUnknownTags,
 			Decoded:     decoded,
+			Fields:      allFields,
 		}, nil
 	case "json":
 		// Document-shaped, jq-friendly output: mti/fields/binary_fields share the
@@ -142,6 +158,7 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 			Extensions:  extensions,
 			UnknownTags: displayUnknownTags,
 			Decoded:     decoded,
+			Fields:      allFields,
 		}, nil
 	default:
 		return ViewResult{}, fmt.Errorf("unsupported view format %q", format)
@@ -404,6 +421,52 @@ func DecodeFields(msg *iso8583.Message) []DecodedField {
 		}
 	}
 	return decoded
+}
+
+// displayFields returns every present leaf field, in display order, with its
+// value masked exactly as view masks it (unless unsafe is set) and annotated
+// with its decoded meaning when one exists. It is the complete listing — unlike
+// DecodeFields, which keeps only the codes that map to a meaning — so a fault
+// investigation sees fields such as F37/F38/F41/F42/F48/F63 that carry no
+// decoded meaning. The MTI leads, then fields in numeric/nested path order.
+func displayFields(msg *iso8583.Message, doc messageio.Document, unknownTags []UnknownTag, unsafe, builtinSemantics bool) []DecodedField {
+	flat := FlattenDocument(doc)
+	// The MTI is rendered first from the message, not as a "mti" pseudo-path.
+	delete(flat, "mti")
+	paths := make([]string, 0, len(flat))
+	for p := range flat {
+		paths = append(paths, p)
+	}
+	sortPaths(paths)
+
+	unknownPaths := make(map[string]bool, len(unknownTags))
+	for _, t := range unknownTags {
+		unknownPaths[t.Path] = true
+	}
+
+	out := make([]DecodedField, 0, len(paths)+1)
+	if mti, err := msg.GetMTI(); err == nil && mti != "" {
+		entry := DecodedField{Path: "0", Value: mti}
+		if meaning := annotate.MTI(mti); meaning != "" {
+			entry.Meaning = meaning
+		}
+		out = append(out, entry)
+	}
+	for _, path := range paths {
+		value := flat[path]
+		display := value
+		if !unsafe {
+			display = maskValueForDiff(path, value, unknownPaths, builtinSemantics)
+		}
+		entry := DecodedField{Path: path, Value: display}
+		// Annotate from the raw value: a masked value has no meaning, and a
+		// non-sensitive field is returned unchanged by the mask anyway.
+		if meaning, ok := annotate.FieldMeaning(path, strings.TrimSpace(value)); ok {
+			entry.Meaning = meaning
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func decodeSubfields(parent string, subfields map[string]field.Field) []DecodedField {

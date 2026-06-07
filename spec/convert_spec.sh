@@ -144,7 +144,25 @@ Describe 'iso8583tool convert'
       When run iso8583tool convert "$EXAMPLES/0100-auth-request.json" --output "$WORK/out.hex"
       The status should be success
       The output should include 'Converted with'
+      The output should include 'unmasked'
+      The output should include 'sensitive'
       The path "$WORK/out.hex" should be file
+    End
+  End
+
+  Describe 'unmasked-output warning'
+    It 'documents the unmasked output in help'
+      When run iso8583tool convert --help
+      The status should be success
+      The output should include 'UNMASKED'
+      The output should include 'redact'
+    End
+
+    It 'stays byte-clean on stderr when piped (stdout not a TTY)'
+      When run iso8583tool convert "$EXAMPLES/0100-auth-request.hex"
+      The status should be success
+      The output should include '"mti": "0100"'
+      The stderr should equal ''
     End
   End
 End
