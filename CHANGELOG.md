@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-07
+
+### Changed
+
+- `send`'s describe view now lists **every** present field, not only the codes
+  that decode to a human meaning. A BASE I fault investigation no longer misses
+  fields such as F37/F38/F41/F42/F48/F63, and the listing stays consistent with
+  `view` — cardholder data is masked by default, `--unsafe` shows raw values.
+- `send --dry-run` now matches its documentation about inspecting the framed
+  bytes. The framed wire bytes carry the PAN/track/PIN in the clear, so they are
+  withheld by default and revealed under `--unsafe`: a `Framed bytes:` line in
+  describe output and a `framed_hex` field in `--format json`. The default
+  output is unchanged (the `Would send bytes:` count / `would_send_bytes`).
+- `doctor` now explains how to choose when `basei-starter` and `spec87ascii` fit
+  a message equally well (a message with no Field 55 fits both): it names both
+  presets and notes they differ only in Field 55 (EMV BER-TLV vs plain ASCII),
+  so the recommendation is actionable instead of a coin flip.
+
+### Fixed
+
+- `convert` makes its unmasked output explicit so it is not mistaken for the
+  masked `view`/`diff`/`send` output. `convert --help` states the output is
+  UNMASKED for round-trip fidelity and points to `redact` for safe sharing, and
+  a run prints a one-line reminder — in the `--output` report, or on stderr when
+  stdout is a terminal. Piped runs (`convert | convert`, scripts) stay byte-clean
+  on stderr.
+
 ## [0.6.0] - 2026-06-06
 
 ### Added
@@ -397,7 +424,8 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/nao1215/iso8583tool/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/nao1215/iso8583tool/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/nao1215/iso8583tool/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nao1215/iso8583tool/compare/v0.4.0...v0.5.0

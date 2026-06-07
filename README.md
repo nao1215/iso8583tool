@@ -203,12 +203,17 @@ $ iso8583tool convert examples/basei/0100-auth-request.hex
 }
 ```
 
-Unknown Field 55 tags are preserved when converting. Unlike `view`, `convert`
-emits the document **unmasked** so it round-trips, so treat its JSON output as
-sensitive. A document is rejected when a path is ambiguous — the same path in
-both `fields` and `binary_fields`, or a parent that also has nested children
-(for example `55` together with `55.9F02`, or `48` with `48.1`) — because
-packing it would be order-dependent and silently lossy.
+Unknown Field 55 tags are preserved when converting. Unlike `view`, `diff`, and
+`send` — which mask cardholder data by default — `convert` emits the document
+**unmasked** so it round-trips, so the PAN, track, and PIN are in the clear.
+Treat its output as sensitive and use [`redact`](#redact) to share it safely.
+`convert --help` says the same, and a run prints a one-line reminder: in the
+`--output` report, or on stderr when stdout is a terminal. Piped runs
+(`convert | convert`, scripts) stay byte-clean. A document is rejected when a
+path is ambiguous — the same path in both `fields` and `binary_fields`, or a
+parent that also has nested children (for example `55` together with `55.9F02`,
+or `48` with `48.1`) — because packing it would be order-dependent and silently
+lossy.
 
 ## `send`
 
@@ -232,12 +237,15 @@ inline message — a JSON document or a hex/raw string — not hex only.
 `--timeout` (default `5s`) bounds the connect and read. The request and response
 are masked by default like [`view`](#view); `--unsafe` shows raw values.
 
-`--dry-run` packs and frames the request, prints exactly what *would* be sent
-(the framing, the wire byte count, and the decoded request view), then exits
-without opening a connection. It is the fast way to confirm a message packs under
-the active spec — and to inspect the framed bytes — before a real run; in an E2E
-script you can keep the same command line and just drop the flag for the live
-send. A malformed `HOST:PORT` is reported the same way with or without the flag.
+`--dry-run` packs and frames the request, prints what *would* be sent (the
+framing, the wire byte count, and the decoded request view), then exits without
+opening a connection. It is the fast way to confirm a message packs under the
+active spec before a real run; in an E2E script you can keep the same command
+line and just drop the flag for the live send. A malformed `HOST:PORT` is
+reported the same way with or without the flag. Because the framed wire bytes
+carry the PAN/track/PIN in the clear, they are withheld by default; pass
+`--unsafe` to also print the framed bytes (a `Framed bytes:` line, or `framed_hex`
+in `--format json`) when you need to inspect exactly what would go on the wire.
 
 For shell-based E2E or CI, assert on the decoded reply without piping through
 `jq`: `--expect-mti VALUE` checks the response MTI, and `--expect-field
@@ -282,14 +290,34 @@ Sent bytes: 96  Received bytes: 108  RTT: 294µs
 Request:
   Summary: 0800 · Echo test · STAN 654321 · TERMNET1
   0 = 0800  → Network management Request from Acquirer (ISO8583:1987)
+  7 = 0604161616  → 06-04 16:16:16
+  11 = 654321
+  12 = 161616  → 16:16:16
+  13 = 0604  → 06-04
+  24 = 001
+  41 = TERMNET1
+  48 = HEARTBEAT=BASEI
   70 = 301  → Echo test
 
 Response:
   Summary: 0810 · Approved · Echo test · STAN 654321 · TERMNET1
   0 = 0810  → Network management Response from Acquirer (ISO8583:1987)
+  7 = 0604161616  → 06-04 16:16:16
+  11 = 654321
+  12 = 161617  → 16:16:17
+  13 = 0604  → 06-04
+  24 = 001
   39 = 00  → Approved
+  41 = TERMNET1
+  48 = HEARTBEAT=BASEI
+  63 = ECHO=OK
   70 = 301  → Echo test
 ```
+
+The describe view lists **every** present field — not only the codes that decode
+to a human meaning — so a fault investigation surfaces fields like F37/F38/F41/F42/F48/F63,
+consistent with [`view`](#view). Cardholder data is masked the same way (`--unsafe`
+shows raw values).
 
 `--format json` emits a machine-readable record: `remote_addr`, `framing`,
 `timeout`, `rtt_ms`, `sent_bytes`, `received_bytes`, the `request` / `response`
@@ -390,7 +418,11 @@ Confirm with: iso8583tool view examples/basei/0110-auth-response.hex --spec base
 `doctor` exits non-zero when no built-in preset can unpack the message, which
 usually means it needs a custom `moov-io/iso8583` JSON spec. It only ranks the
 built-in presets and can flag more than one as fitting, so confirm the result
-with `view`. `validate` points here when a message fails to unpack.
+with `view`. When `basei-starter` and `spec87ascii` tie — a message with no
+Field 55 fits both — `doctor` names both and explains how to choose: they differ
+only in Field 55 (EMV BER-TLV vs plain ASCII), so pick `basei-starter` if the
+message carries EMV/ICC data in Field 55, otherwise `spec87ascii`. `validate`
+points here when a message fails to unpack.
 
 ## `specs`
 

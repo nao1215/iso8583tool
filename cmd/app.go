@@ -476,6 +476,7 @@ func (a *App) runConvert(args []string) int {
 		writeLine(flagSet.Output(), "Convert between a packed message and a JSON document (direction auto-detected).")
 		writeLine(flagSet.Output(), "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
 		writeLine(flagSet.Output(), "JSON input is packed to a message; a message is unpacked to a JSON document.")
+		writeLine(flagSet.Output(), "Output is UNMASKED for round-trip fidelity, unlike view/diff/send which mask by default: the PAN, track, and PIN are emitted in the clear. Treat the result as sensitive and use redact to share it safely.")
 		writeLine(flagSet.Output(), "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
 		printFlagDefaults(flagSet.Output(), flagSet)
 	}
@@ -563,11 +564,26 @@ func (a *App) runConvert(args []string) int {
 		}
 		writef(a.stdout, "Converted with %s (%s).\n", ctx.specLabel, summary)
 		writef(a.stdout, "Output: %s\n", *outputPath)
+		// The data went to the file, so stdout is the human report channel here:
+		// the sensitivity note rides along with it (and follows stdout to /dev/null
+		// when the report is discarded), keeping stderr clean for scripts.
+		writef(a.stdout, "Note: convert output is unmasked for round-trip fidelity; %s holds the PAN/track/PIN in the clear, so treat it as sensitive and use redact to share it safely.\n", *outputPath)
 		return 0
 	}
 
 	_, _ = a.stdout.Write(out)
+	a.warnConvertUnmaskedStdout()
 	return 0
+}
+
+// warnConvertUnmaskedStdout reminds the operator that convert emits an unmasked
+// document so it round-trips, unlike view/diff/send which mask cardholder data
+// by default. It writes to stderr only when a human is watching a terminal, so
+// convert | convert and other scripted pipelines stay byte-clean.
+func (a *App) warnConvertUnmaskedStdout() {
+	if f, ok := a.stdout.(*os.File); ok && render.IsTerminal(f) {
+		writeLine(a.stderr, "Note: convert output is unmasked for round-trip fidelity; it holds the PAN/track/PIN in the clear. Treat it as sensitive and use redact to share safely.")
+	}
 }
 
 // convertDirection returns the output format: "hex" (pack a document) or
@@ -778,19 +794,21 @@ func (a *App) printSendDescribe(result service.SendResult, framing string, timeo
 	a.printSendSide("Response", resp, pal)
 }
 
-// printSendSide prints the one-line summary and decoded fields for one side of
-// the exchange, mirroring the safe (masked) view the view command produces.
+// printSendSide prints the one-line summary and the full field listing for one
+// side of the exchange, mirroring the safe (masked) view the view command
+// produces. It shows every present field — not only the codes that decode to a
+// meaning — so a fault investigation does not miss F37/F38/F41/F42/F48/F63.
 func (a *App) printSendSide(title string, view service.ViewResult, pal render.Palette) {
 	writef(a.stdout, "\n%s\n", pal.BoldCyan(title+":"))
 	if view.Summary != "" {
 		writef(a.stdout, "  %s %s\n", pal.Dim("Summary:"), pal.Cyan(view.Summary))
 	}
-	if len(view.Decoded) == 0 {
-		return
-	}
-	for _, d := range view.Decoded {
-		writef(a.stdout, "  %s = %s  %s\n",
-			pal.Green(d.Path), pal.Yellow(render.SanitizeControl(d.Value)), pal.Cyan("→ "+d.Meaning))
+	for _, d := range view.Fields {
+		line := fmt.Sprintf("  %s = %s", pal.Green(d.Path), pal.Yellow(render.SanitizeControl(d.Value)))
+		if d.Meaning != "" {
+			line += "  " + pal.Cyan("→ "+d.Meaning)
+		}
+		writeLine(a.stdout, line)
 	}
 }
 
@@ -868,27 +886,41 @@ func (a *App) runSendDryRun(address string, framing service.Framing, timeout tim
 	if format == "json" {
 		return a.printSendDryRunJSON(address, string(framing), timeout, payload, framed, reqView, unsafe)
 	}
-	a.printSendDryRunDescribe(address, string(framing), specLabel, framed, reqView, pal)
-	return 0
+	return a.printSendDryRunDescribe(address, string(framing), specLabel, framed, reqView, unsafe, pal)
 }
 
-func (a *App) printSendDryRunDescribe(address, framing, specLabel string, framed []byte, req service.ViewResult, pal render.Palette) {
+func (a *App) printSendDryRunDescribe(address, framing, specLabel string, framed []byte, req service.ViewResult, unsafe bool, pal render.Palette) int {
 	writef(a.stdout, "%s\n", pal.BoldCyan("Dry run (no message sent)"))
 	writef(a.stdout, "%s %s\n", pal.Dim("Target:"), pal.Bold(address))
 	writef(a.stdout, "%s %s\n", pal.Dim("Framing:"), pal.Cyan(framing))
 	writef(a.stdout, "%s %s\n", pal.Dim("Spec:"), pal.Bold(specLabel))
 	writef(a.stdout, "%s %d\n", pal.Dim("Would send bytes:"), len(framed))
+	// The framed wire bytes carry the PAN/track/PIN in the clear, so they are
+	// withheld by default and only printed under --unsafe (matching the live-send
+	// hex). This is how a user "inspects the framed bytes" before a real run.
+	if unsafe {
+		framedHex, err := messageio.EncodeOutput(framed, "hex")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		writef(a.stdout, "%s %s\n", pal.Dim("Framed bytes:"), pal.Yellow(string(framedHex)))
+	}
 	a.printSendSide("Request", req, pal)
+	return 0
 }
 
 func (a *App) printSendDryRunJSON(address, framing string, timeout time.Duration, payload, framed []byte, req service.ViewResult, unsafe bool) int {
 	// Mirror the live JSON shape: byte counts always stay; the raw wire hex (which
-	// carries PAN/track/PIN in the clear) is withheld unless --unsafe is set.
+	// carries PAN/track/PIN in the clear) is withheld unless --unsafe is set. Under
+	// --unsafe, framed_hex is the full wire frame (length header + payload) so the
+	// caller can inspect exactly what would be sent before a real run.
 	type payloadJSON struct {
 		Hex   string `json:"hex,omitempty"`
 		Bytes int    `json:"bytes"`
 	}
 	requestPayload := payloadJSON{Bytes: len(payload)}
+	framedHex := ""
 	if unsafe {
 		requestHex, err := messageio.EncodeOutput(payload, "hex")
 		if err != nil {
@@ -896,6 +928,12 @@ func (a *App) printSendDryRunJSON(address, framing string, timeout time.Duration
 			return 1
 		}
 		requestPayload.Hex = string(requestHex)
+		framedEncoded, err := messageio.EncodeOutput(framed, "hex")
+		if err != nil {
+			writeLine(a.stderr, err)
+			return 1
+		}
+		framedHex = string(framedEncoded)
 	}
 	out := struct {
 		DryRun         bool            `json:"dry_run"`
@@ -903,6 +941,7 @@ func (a *App) printSendDryRunJSON(address, framing string, timeout time.Duration
 		Framing        string          `json:"framing"`
 		Timeout        string          `json:"timeout"`
 		WouldSendBytes int             `json:"would_send_bytes"`
+		FramedHex      string          `json:"framed_hex,omitempty"`
 		Request        payloadJSON     `json:"request"`
 		RequestView    json.RawMessage `json:"request_view"`
 	}{
@@ -911,6 +950,7 @@ func (a *App) printSendDryRunJSON(address, framing string, timeout time.Duration
 		Framing:        framing,
 		Timeout:        timeout.String(),
 		WouldSendBytes: len(framed),
+		FramedHex:      framedHex,
 		Request:        requestPayload,
 		RequestView:    json.RawMessage(req.Body),
 	}
@@ -1127,6 +1167,9 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 		// is not mistaken for the single right answer.
 		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+strings.Join(diag.Recommendations, " or --spec ")))
 		writeLine(a.stdout, pal.Yellow("Note: more than one preset fits equally well; confirm by eye."))
+		if hint := ambiguityHint(diag.Recommendations); hint != "" {
+			writeLine(a.stdout, pal.Dim(hint))
+		}
 	default:
 		writef(a.stdout, "%s %s\n", pal.Dim("Recommended:"), pal.BoldGreen("--spec "+diag.Recommended))
 	}
@@ -1166,6 +1209,22 @@ func (a *App) printSpecDiagnosis(diag service.SpecDiagnosis, target string, pal 
 			}
 		}
 	}
+}
+
+// ambiguityHint explains how to choose between presets that fit a message
+// equally well, so a tie is actionable instead of a coin flip. The bundled
+// basei-starter and spec87ascii differ only in how field 55 is modeled (EMV
+// BER-TLV vs plain ASCII), so a message without field 55 fits both; the hint
+// tells the user which to pick. Other tied sets get no hint (empty string).
+func ambiguityHint(recommendations []string) string {
+	tied := make(map[string]bool, len(recommendations))
+	for _, r := range recommendations {
+		tied[r] = true
+	}
+	if tied[basei.StarterPreset] && tied[basei.Spec87ASCIIPreset] {
+		return "basei-starter and spec87ascii differ only in Field 55 (EMV BER-TLV vs plain ASCII); pick basei-starter if the message carries EMV/ICC data in Field 55, otherwise spec87ascii."
+	}
+	return ""
 }
 
 // recommendedSet returns the set of presets tied at the best score. It falls

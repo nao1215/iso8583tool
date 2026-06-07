@@ -29,6 +29,16 @@ Describe 'iso8583tool send'
       The output should include '0810'
     End
 
+    It 'lists every response field, not only annotated codes'
+      # F41/F48/F63 carry no decoded meaning but must still be visible for a
+      # fault investigation, consistent with view.
+      When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.hex" --framing 2byte-binary --no-color
+      The status should be success
+      The output should include '41 = TERMNET1'
+      The output should include '48 = HEARTBEAT=BASEI'
+      The output should include '63 = ECHO=OK'
+    End
+
     It 'packs a JSON document and sends it'
       When run iso8583tool send "$MOCK_ADDR" "$EXAMPLES/0800-network-echo.json" --framing 2byte-binary --format json
       The status should be success
@@ -156,6 +166,24 @@ Describe 'iso8583tool send'
       The output should include '"dry_run": true'
       The output should include '"would_send_bytes"'
       The output should include '"mti": "0800"'
+    End
+
+    It 'withholds the framed bytes by default'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run --no-color
+      The status should be success
+      The output should not include 'Framed bytes'
+    End
+
+    It 'reveals the framed wire bytes under --unsafe'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run --unsafe --no-color
+      The status should be success
+      The output should include 'Framed bytes:'
+    End
+
+    It 'includes framed_hex in JSON only under --unsafe'
+      When run iso8583tool send 127.0.0.1:1 "$EXAMPLES/0800-network-echo.hex" --dry-run --unsafe --format json
+      The status should be success
+      The output should include '"framed_hex"'
     End
 
     It 'rejects expectations because there is no response to assert'

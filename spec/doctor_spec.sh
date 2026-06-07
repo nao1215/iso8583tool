@@ -62,6 +62,13 @@ Describe 'iso8583tool doctor'
     The output should include 'view --spec spec87ascii'
   End
 
+  It 'explains how to choose between the tied basei-starter and spec87ascii presets'
+    When run iso8583tool doctor "$PROJECT_ROOT/examples/spec87ascii/0800-network-echo.hex" --no-color
+    The status should be success
+    The output should include 'Field 55'
+    The output should include 'EMV'
+  End
+
   Describe 'shell-safe confirm hint'
     BeforeEach 'make_workdir; cp "$EXAMPLES/0110-auth-response.hex" "$WORK/with space.hex"'
     AfterEach 'remove_workdir'
