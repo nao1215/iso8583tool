@@ -585,12 +585,12 @@ go test ./internal/service -run TestPBT -rapid.checks=20000
 
 ```shell
 make test       # unit tests with coverage
-make test-e2e   # shellspec end-to-end tests against the built binary
+make e2e        # atago end-to-end tests against a freshly built binary
 make lint       # golangci-lint
 ```
 
-README command examples are covered by the end-to-end tests under
-[`spec/`](./spec). See [CONTRIBUTING.md](./CONTRIBUTING.md).
+README command examples are covered by the atago end-to-end tests under
+[`e2e/atago/`](./e2e/atago). See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 

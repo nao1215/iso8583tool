@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e lint tools demo clean help
+.PHONY: build test e2e lint tools demo clean help
 
 APP        = iso8583tool
 VERSION    = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -17,16 +17,16 @@ test: ## Run unit tests with coverage output
 	$(GO_TEST) -cover -covermode=atomic -coverpkg=$(GO_PKGROOT) -coverprofile=coverage.out $(GO_PKGROOT)
 	$(GO_TOOL) cover -html=coverage.out -o coverage.html
 
-test-e2e: build ## Run shellspec end-to-end tests against the built binary
-	shellspec --shell sh
+e2e: ## Run atago end-to-end tests against the freshly built binary
+	./e2e/run.sh
 
 lint: ## Run golangci-lint
 	golangci-lint run --config .golangci.yml
 
-tools: ## Install developer tools (linter, coverage, shellspec for e2e)
+tools: ## Install developer tools (linter, coverage, atago for e2e)
 	$(GO_INSTALL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	$(GO_INSTALL) github.com/k1LoW/octocov@latest
-	curl -fsSL https://git.io/shellspec | sh -s 0.28.1 --yes
+	$(GO_INSTALL) github.com/nao1215/atago@latest
 
 demo: build ## Regenerate the README GIF from docs/demo.tape (needs vhs)
 	@command -v vhs >/dev/null || { echo 'vhs is required: go install github.com/charmbracelet/vhs@latest'; exit 1; }

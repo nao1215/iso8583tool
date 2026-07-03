@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The end-to-end suite is now driven by [atago](https://github.com/nao1215/atago)
+  (`e2e/atago/*.atago.yaml` + `e2e/run.sh`, `make e2e`) instead of shellspec;
+  the specs cover the same CLI surface. The single-shot TCP mock server moved
+  from `spec/mock` to `e2e/mock` (`spec/` and `.shellspec` are removed).
+
 ## [0.7.0] - 2026-06-07
 
 ### Changed
