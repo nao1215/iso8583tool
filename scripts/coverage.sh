@@ -25,7 +25,7 @@ echo ">> unit coverage -> ${cov}/unit"
 go test -count=1 -cover -covermode=atomic -coverpkg=./... ./... \
 	-args -test.gocoverdir="${cov}/unit"
 
-# 2. Self-hosted E2E via a coverage-instrumented binary. e2e/run.sh honours
+# 2. Self-hosted E2E via a coverage-instrumented binary. e2e/run.sh honors
 #    COVER=1 by building iso8583tool with `go build -cover` and skips the normal
 #    build; GOCOVERDIR is inherited by every iso8583tool child atago spawns (the
 #    specs do not use clear_env), so each writes its own covdata here.
