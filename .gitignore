@@ -17,6 +17,10 @@
 *.coverprofile
 profile.cov
 
+# `make coverage` scratch: raw covdata (unit + e2e) and the merged dir. The
+# final coverage.out / coverage.html are the only kept artifacts.
+.coverage/
+
 # rapid (property-based testing) failure reproduction files. These are
 # machine-generated when a property fails and are not meant to be committed;
 # a reproducible case worth keeping should become an explicit test instead.

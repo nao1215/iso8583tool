@@ -29,8 +29,18 @@ cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 mkdir -p "$TMP/bin"
 
-echo "e2e: building iso8583tool and the mock server..."
-(cd "$REPO_ROOT" && env CGO_ENABLED=0 go build -o "$TMP/bin/iso8583tool" main.go)
+# COVER=1 (set by scripts/coverage.sh) builds a coverage-instrumented binary so
+# a real E2E run contributes to coverage.out. The caller must also export
+# GOCOVERDIR; atago passes it through to every iso8583tool child (no clear_env
+# in the specs), so each writes its own covdata there. The DEFAULT path is left
+# byte-for-byte identical, keeping `make e2e` fast.
+if [ -n "${COVER:-}" ]; then
+	echo "e2e: building coverage-instrumented iso8583tool and the mock server..."
+	(cd "$REPO_ROOT" && env CGO_ENABLED=0 go build -cover -covermode=atomic -coverpkg=./... -o "$TMP/bin/iso8583tool" main.go)
+else
+	echo "e2e: building iso8583tool and the mock server..."
+	(cd "$REPO_ROOT" && env CGO_ENABLED=0 go build -o "$TMP/bin/iso8583tool" main.go)
+fi
 (cd "$REPO_ROOT" && go build -o "$TMP/bin/iso-mock" ./e2e/mock)
 
 # Put the e2e-built binaries first on PATH so the specs exercise them.
