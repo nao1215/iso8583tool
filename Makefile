@@ -1,4 +1,4 @@
-.PHONY: build test e2e lint tools demo clean help
+.PHONY: build test coverage e2e lint tools demo clean help
 
 APP        = iso8583tool
 VERSION    = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -16,6 +16,9 @@ build: ## Build binary
 test: ## Run unit tests with coverage output
 	$(GO_TEST) -cover -covermode=atomic -coverpkg=$(GO_PKGROOT) -coverprofile=coverage.out $(GO_PKGROOT)
 	$(GO_TOOL) cover -html=coverage.out -o coverage.html
+
+coverage: ## Combine unit + self-hosted E2E coverage into coverage.out / coverage.html (uses a `go build -cover` binary; scratch under .coverage/)
+	bash ./scripts/coverage.sh
 
 e2e: ## Run atago end-to-end tests against the freshly built binary
 	./e2e/run.sh
@@ -38,7 +41,7 @@ demo: build ## Regenerate the README GIF from docs/demo.tape (needs vhs)
 	@echo 'Regenerated docs/*.gif'
 
 clean: ## Clean build and test artifacts
-	-rm -rf $(APP) coverage.out coverage.html
+	-rm -rf $(APP) coverage.out coverage.html .coverage
 
 .DEFAULT_GOAL := help
 help:
