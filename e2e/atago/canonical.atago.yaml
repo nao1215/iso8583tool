@@ -13,8 +13,7 @@ scenarios:
   - name: shows F3 with canonical width in the full describe view
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --no-color"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -31,8 +30,7 @@ scenarios:
   - name: matches the filtered view for F4
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 4 --no-color"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 4 --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -41,8 +39,7 @@ scenarios:
   - name: returns canonical decoded values in JSON for F3
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
       # Both the fields map and the decoded entry use the canonical width.
@@ -55,8 +52,7 @@ scenarios:
   - name: returns canonical decoded values from validate for F3
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
           stdout:

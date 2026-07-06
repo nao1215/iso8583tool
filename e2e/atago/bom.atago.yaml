@@ -35,11 +35,12 @@ scenarios:
             not_contains: "invalid character"
 
   - name: views a BOM-prefixed hex file
+    skip: { os: windows }
     steps:
       - run: &build_bom_hex
           shell: true
           command: |
-            { printf '\357\273\277'; cat "$ISO_EXAMPLES/basei/0110-auth-response.hex"; } > bom.hex
+            { printf '\357\273\277'; cat "${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"; } > bom.hex
       - run:
           command: iso8583tool view bom.hex --no-color
       - assert:

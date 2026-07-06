@@ -13,8 +13,7 @@ scenarios:
   - name: auto-detected direction packs a JSON document to hex
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.json"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json"
       - assert:
           exit_code: 0
           stdout:
@@ -23,8 +22,7 @@ scenarios:
   - name: auto-detected direction unpacks a message to a JSON document
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.hex"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -35,8 +33,7 @@ scenarios:
   - name: --to override forces json output from a message
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0110-auth-response.hex --to json"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --to json"
       - assert:
           exit_code: 0
           stdout:
@@ -45,8 +42,7 @@ scenarios:
   - name: --to override rejects an unknown direction
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.json --to sideways"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --to sideways"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -173,6 +169,7 @@ scenarios:
             contains: "text field"
 
   - name: round-trip is stable through hex -> json -> hex
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -186,6 +183,7 @@ scenarios:
             equals: "SAME"
 
   - name: is stable through raw -> json -> raw with the packed-BCD starter preset
+    skip: { os: windows }
     steps:
       - fixture:
           file: message.bin
@@ -205,8 +203,7 @@ scenarios:
   - name: to a file writes the result and reports it
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.json --output out.hex"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --output out.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -232,8 +229,7 @@ scenarios:
   - name: stays byte-clean on stderr when piped (stdout not a TTY)
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.hex"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
       - assert:
           exit_code: 0
           stdout:

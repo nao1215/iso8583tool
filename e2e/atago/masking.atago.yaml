@@ -11,6 +11,7 @@ suite:
 
 scenarios:
   - name: does not mask a non-PAN business identifier
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -22,6 +23,7 @@ scenarios:
             contains: "ORDER_ID=1234567890123"
 
   - name: masks a dash-separated PAN
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -33,6 +35,7 @@ scenarios:
             not_contains: "1111-1111-1111"
 
   - name: masks a space-separated PAN
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -44,6 +47,7 @@ scenarios:
             not_contains: "1111 1111 1111"
 
   - name: masks a PAN embedded in a non-private free-form field
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -55,6 +59,7 @@ scenarios:
             not_contains: "4111111111111111"
 
   - name: masks the extended PAN field 34
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -66,6 +71,7 @@ scenarios:
             not_contains: "411111111111111111111111"
 
   - name: does not mask the country code field 20
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -77,6 +83,7 @@ scenarios:
             contains: '"20": "840"'
 
   - name: shows the raw field 20 change in diff
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -93,6 +100,7 @@ scenarios:
               - "392"
 
   - name: masks a whole free-form track, not just its PAN
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -104,6 +112,7 @@ scenarios:
             not_contains: "29122011234567890"
 
   - name: masks an underscore-labeled PAN (card_no)
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -115,6 +124,7 @@ scenarios:
             not_contains: "4222222222222222"
 
   - name: masks a spaced-label PAN (card number)
+    skip: { os: windows }
     steps:
       - run:
           shell: true

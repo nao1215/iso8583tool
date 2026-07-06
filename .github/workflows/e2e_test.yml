@@ -18,9 +18,16 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+          - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+
+    # Run every step through bash so the single e2e/run.sh bootstrap works
+    # identically on all three runners (Git Bash ships on the Windows runner).
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v7
@@ -35,7 +42,9 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
         with:
-          version: v0.2.0
+          version: v0.5.1
 
+      # Call the bootstrap directly (make is not present on the Windows runner).
+      # Scenarios that need a POSIX shell are gated with skip: { os: windows }.
       - name: Run end-to-end tests
-        run: make e2e
+        run: ./e2e/run.sh

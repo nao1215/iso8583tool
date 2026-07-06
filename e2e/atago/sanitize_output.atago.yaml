@@ -16,6 +16,7 @@ suite:
 
 scenarios:
   - name: view escapes control bytes
+    skip: { os: windows }
     steps:
       - fixture: &bin41
           file: bin41.json
@@ -34,6 +35,7 @@ scenarios:
             contains: "^["
 
   - name: validate escapes control bytes
+    skip: { os: windows }
     steps:
       - fixture: *bin41
       - run:
@@ -47,6 +49,7 @@ scenarios:
             not_contains: "\x1b"
 
   - name: diff escapes control bytes
+    skip: { os: windows }
     steps:
       - fixture: *bin41
       - run:
@@ -66,6 +69,7 @@ scenarios:
             contains: "^["
 
   - name: redact text escapes control bytes
+    skip: { os: windows }
     steps:
       - fixture: *bin41
       - run:

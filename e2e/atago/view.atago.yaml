@@ -15,8 +15,7 @@ scenarios:
   - name: describe output - decodes codes and prints a summary
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -29,8 +28,7 @@ scenarios:
   - name: describe output - masks the PAN
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -42,8 +40,7 @@ scenarios:
   - name: json output - emits a decoded array and stays uncolored
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --format json --color always"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json --color always"
       - assert:
           exit_code: 0
           stdout:
@@ -54,8 +51,7 @@ scenarios:
   - name: --filter prints only the requested fields
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 39 --filter 55.8A"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 39 --filter 55.8A"
       - assert:
           exit_code: 0
           stdout:
@@ -67,8 +63,7 @@ scenarios:
   - name: --filter marks a field that is not present
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 90"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 90"
       - assert:
           exit_code: 0
           stdout:
@@ -77,8 +72,7 @@ scenarios:
   - name: --filter emits object-shaped JSON with an explicit missing_filters list
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 39 --filter 90 --format json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 39 --filter 90 --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -91,14 +85,14 @@ scenarios:
   - name: --filter always emits missing_filters as an array even when nothing is missing
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 39 --format json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 39 --format json"
       - assert:
           exit_code: 0
           stdout:
             contains: '"missing_filters": []'
 
   - name: stdin - reads a message piped in via -
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -111,6 +105,7 @@ scenarios:
               - "Approved"
 
   - name: stdin - reads from stdin when the target is omitted
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -121,6 +116,7 @@ scenarios:
             contains: "MTI"
 
   - name: raw binary + packed BCD - views a kanmu-like raw message with the packed-BCD starter preset
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -137,6 +133,7 @@ scenarios:
               - "2204"
 
   - name: private-field safety - masks a PAN embedded in a free-form private field by default
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -147,6 +144,7 @@ scenarios:
             not_contains: "4111111111111111"
 
   - name: private-field safety - reveals the raw private-field value with --unsafe
+    skip: { os: windows }
     steps:
       - run:
           shell: true

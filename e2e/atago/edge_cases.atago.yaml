@@ -61,8 +61,7 @@ scenarios:
   - name: fails when a directory is passed instead of a file
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -71,14 +70,14 @@ scenarios:
   - name: refuses both a file argument and --raw
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --raw 0100"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --raw 0100"
       - assert:
           exit_code: { not: 0 }
           stderr:
             empty: false
 
   - name: fails to pack a document with no mti
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -89,6 +88,7 @@ scenarios:
             contains: "mti"
 
   - name: fails to pack a document with an invalid TLV tag
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -99,6 +99,7 @@ scenarios:
             empty: false
 
   - name: oversized input - rejects an oversized file with a clear limit error
+    skip: { os: windows }
     # ~1.05 MiB of '0' (valid, even-length hex) just over the 1 MiB source cap.
     steps:
       - run:
@@ -112,6 +113,7 @@ scenarios:
             contains: "limit"
 
   - name: oversized input - rejects oversized stdin with a clear limit error
+    skip: { os: windows }
     steps:
       - run:
           shell: true

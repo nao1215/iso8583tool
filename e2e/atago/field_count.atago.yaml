@@ -12,11 +12,12 @@ suite:
 
 scenarios:
   - name: reports the top-level field count matching doctor
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            summary=$(iso8583tool convert "$ISO_EXAMPLES/basei/0100-auth-request.json" --output out.hex | head -1)
+            summary=$(iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.json" --output out.hex | head -1)
             count=$(iso8583tool doctor out.hex --format json | sed -n 's/.*"field_count": \([0-9]*\).*/\1/p' | head -1)
             [ "$summary" = "Converted with basei-starter (packed $count fields to hex)." ] && echo OK || echo MISMATCH
       - assert:

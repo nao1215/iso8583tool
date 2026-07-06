@@ -65,6 +65,7 @@ scenarios:
             not_contains: "F127 Reserved Private [bitmap]"
 
   - name: explains a dot-path set on a plain built-in field
+    skip: { os: windows }
     steps:
       - run:
           shell: true

@@ -13,11 +13,12 @@ suite:
 
 scenarios:
   - name: masks the PAN in JSON output
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            iso8583tool redact $ISO_EXAMPLES/basei/0100-auth-request.hex | jq -r '.fields["2"]'
+            iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex | jq -r '.fields["2"]'
       - assert:
           exit_code: 0
           stdout:
@@ -26,19 +27,19 @@ scenarios:
   - name: never leaks the full PAN
     steps:
       - run:
-          shell: true
-          command: "iso8583tool redact $ISO_EXAMPLES/basei/0100-auth-request.hex"
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "4111111111111111"
 
   - name: fully masks the EMV application cryptogram
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            iso8583tool redact $ISO_EXAMPLES/basei/0100-auth-request.hex | jq -r '.binary_fields["55.9F26"]'
+            iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex | jq -r '.binary_fields["55.9F26"]'
       - assert:
           exit_code: 0
           stdout:
@@ -47,8 +48,7 @@ scenarios:
   - name: supports a human-readable text format
     steps:
       - run:
-          shell: true
-          command: "iso8583tool redact $ISO_EXAMPLES/basei/0100-auth-request.hex --format text"
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text"
       - assert:
           exit_code: 0
           stdout:
@@ -59,8 +59,7 @@ scenarios:
   - name: orders text output by MTI then numeric field id
     steps:
       - run:
-          shell: true
-          command: "iso8583tool redact $ISO_EXAMPLES/basei/0100-auth-request.hex --format text --color never"
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --color never"
       - assert:
           exit_code: 0
           stdout:
@@ -72,16 +71,18 @@ scenarios:
             contains: "F2 ="
 
   - name: reads from stdin for a Slack-safe pipe
+    skip: { os: windows }
     steps:
       - run:
           shell: true
-          command: "cat $ISO_EXAMPLES/basei/0100-auth-request.hex | iso8583tool redact -"
+          command: "cat ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex | iso8583tool redact -"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "4111111111111111"
 
   - name: masks a PAN embedded in a free-form private field (F63)
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -93,6 +94,7 @@ scenarios:
             not_contains: "4111111111111111"
 
   - name: auto-detected input encoding redacts a raw binary capture without --encoding
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -105,6 +107,7 @@ scenarios:
             contains: '"mti"'
 
   - name: auto-detected input encoding still masks the PAN in a raw binary capture
+    skip: { os: windows }
     steps:
       - run:
           shell: true

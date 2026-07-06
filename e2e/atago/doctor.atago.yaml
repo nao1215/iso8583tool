@@ -13,8 +13,7 @@ scenarios:
   - name: recommends the BASE I starter for an ASCII BASE I message
     steps:
       - run:
-          shell: true
-          command: "iso8583tool doctor $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -23,6 +22,7 @@ scenarios:
               - "Confirm with: iso8583tool view"
 
   - name: detects a packed-BCD raw message
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -36,6 +36,7 @@ scenarios:
             contains: "Recommended: --spec spec87bcd-starter"
 
   - name: auto-detects a raw .bin without --encoding
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -53,8 +54,7 @@ scenarios:
   - name: emits a JSON report with --format json
     steps:
       - run:
-          shell: true
-          command: "iso8583tool doctor $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -77,8 +77,7 @@ scenarios:
     # truncated/corrupt instead.
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/spec87ascii/0800-network-echo.hex --spec spec87bcd-starter"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --spec spec87bcd-starter"
       - assert:
           exit_code: { not: 0 }
           stdout:
@@ -87,8 +86,7 @@ scenarios:
   - name: marks every tied preset recommended and confirms with each
     steps:
       - run:
-          shell: true
-          command: "iso8583tool doctor $ISO_EXAMPLES/spec87ascii/0800-network-echo.hex --no-color"
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -99,8 +97,7 @@ scenarios:
   - name: explains how to choose between the tied basei-starter and spec87ascii presets
     steps:
       - run:
-          shell: true
-          command: "iso8583tool doctor $ISO_EXAMPLES/spec87ascii/0800-network-echo.hex --no-color"
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -111,8 +108,7 @@ scenarios:
   - name: shell-safe confirm hint quotes a path that contains a space
     steps:
       - run:
-          shell: true
-          command: 'cp "$ISO_EXAMPLES/basei/0110-auth-response.hex" "with space.hex"'
+          command: 'cp "${env:ISO_EXAMPLES}/basei/0110-auth-response.hex" "with space.hex"'
       - run:
           command: 'iso8583tool doctor "with space.hex" --no-color'
       - assert:
@@ -123,6 +119,7 @@ scenarios:
               - "with space.hex"
 
   - name: custom-spec validate hint does not steer a custom-spec failure to doctor
+    skip: { os: windows }
     steps:
       - fixture:
           file: spec.json

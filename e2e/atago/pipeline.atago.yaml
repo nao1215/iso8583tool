@@ -11,6 +11,7 @@ suite:
 
 scenarios:
   - name: streams sample -> convert -> view
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -21,11 +22,12 @@ scenarios:
             contains: "MTI"
 
   - name: editing an EMV tag edits one tag and packs it back
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.hex > msg.json
+            iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex > msg.json
             sed 's/"55.9F02": "000000005000"/"55.9F02": "000000010000"/' msg.json > edited.json
       - run:
           shell: true
@@ -36,10 +38,11 @@ scenarios:
             contains: "000000010000"
 
   - name: editing an EMV tag keeps an unknown tag through the round trip
+    skip: { os: windows }
     steps:
       - run:
           shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request-unknown-tlv.hex > u.json"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex > u.json"
       - run:
           shell: true
           command: "iso8583tool convert u.json | iso8583tool validate -"
@@ -51,8 +54,7 @@ scenarios:
   - name: extracts a single field value with --filter
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 39"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 39"
       - assert:
           exit_code: 0
           stdout:

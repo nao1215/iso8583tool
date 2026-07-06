@@ -93,6 +93,7 @@ scenarios:
             contains: "Field 55.70.9F02 changed"
 
   - name: keeps a top-level tag and a nested tag set on the same field
+    skip: { os: windows }
     # A message that mixes "55.82" (top-level) with "55.70.9F02" (constructed)
     # must round-trip both; the flat tag previously overwrote the whole composite.
     steps:

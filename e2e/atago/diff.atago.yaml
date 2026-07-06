@@ -11,12 +11,13 @@ suite:
 
 scenarios:
   - name: reports changed fields in text form
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            cp "$ISO_EXAMPLES/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "$ISO_EXAMPLES/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
+            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
       - run:
           command: "iso8583tool diff before.hex after.hex"
       - assert:
@@ -28,12 +29,13 @@ scenarios:
               - "+ 000000009999"
 
   - name: emits jq-compatible JSON
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            cp "$ISO_EXAMPLES/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "$ISO_EXAMPLES/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
+            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
       - run:
           shell: true
           command: 'iso8583tool diff before.hex after.hex --format json | jq -r ".changes[0].kind"'
@@ -45,20 +47,20 @@ scenarios:
   - name: reports no differences for identical messages
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0110-auth-response.hex $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
             contains: "No differences."
 
   - name: filters to a field subtree
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            cp "$ISO_EXAMPLES/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "$ISO_EXAMPLES/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
+            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
       - run:
           command: "iso8583tool diff before.hex after.hex --filter 55"
       - assert:
@@ -70,12 +72,13 @@ scenarios:
             not_contains: "Field 4 "
 
   - name: reads one side from stdin
+    skip: { os: windows }
     steps:
       - run:
           shell: true
           command: |
-            cp "$ISO_EXAMPLES/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "$ISO_EXAMPLES/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
+            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
       - run:
           shell: true
           command: 'cat after.hex | iso8583tool diff before.hex -'
@@ -96,8 +99,7 @@ scenarios:
   - name: masks track data by default
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --color never"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color never"
       - assert:
           exit_code: 0
           stdout:
@@ -106,8 +108,7 @@ scenarios:
   - name: reveals raw values with --unsafe
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --color never --unsafe"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color never --unsafe"
       - assert:
           exit_code: 0
           stdout:
@@ -116,14 +117,14 @@ scenarios:
   - name: rejects an unknown --format value
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --format bogus"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format bogus"
       - assert:
           exit_code: { not: 0 }
           stderr:
             contains: "unsupported format"
 
   - name: private-field safety - masks an embedded PAN by default
+    skip: { os: windows }
     steps:
       - run:
           shell: true
@@ -138,6 +139,7 @@ scenarios:
             not_contains: "4111111111111111"
 
   - name: private-field safety - reveals the embedded PAN with --unsafe
+    skip: { os: windows }
     steps:
       - run:
           shell: true

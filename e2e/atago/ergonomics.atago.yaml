@@ -10,18 +10,15 @@ version: "1"
 suite:
   name: iso8583tool ergonomics
 
-# Every command here needs the shell (env vars like $ISO_EXAMPLES, pipes into
-# `cat -v`, redirects), so default shell:true once instead of on every run step
-# (ADR-0039). A step can still add its own runner/cwd/timeout/env/stdin.
-defaults:
-  run:
-    shell: true
-
+# Host paths come from ${env:ISO_EXAMPLES} (atago expands it before any runner),
+# so plain tool invocations run without a shell and stay cross-platform. Only the
+# steps that pipe into `cat -v` or call `cp` keep shell:true and are skipped on
+# Windows.
 scenarios:
   - name: flag ordering - accepts the target after the flags
     steps:
       - run:
-          command: "iso8583tool view --format json $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool view --format json ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -30,7 +27,7 @@ scenarios:
   - name: flag ordering - accepts the target before the flags
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -39,7 +36,7 @@ scenarios:
   - name: flag ordering - accepts flags interleaved around the target
     steps:
       - run:
-          command: "iso8583tool view --filter 39 $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 49"
+          command: "iso8583tool view --filter 39 ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 49"
       - assert:
           exit_code: 0
           stdout:
@@ -48,28 +45,34 @@ scenarios:
               - "JPY"
 
   - name: color - is plain by default when not on a terminal
+    skip: { os: windows }
     # When captured (not a tty) auto stays off, so a plain run has no escapes.
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex | cat -v"
+          shell: true
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex | cat -v"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "^["
 
   - name: color - forces color with --color always
+    skip: { os: windows }
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --color always | cat -v"
+          shell: true
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color always | cat -v"
       - assert:
           exit_code: 0
           stdout:
             contains: "^["
 
   - name: color - stays plain with --no-color even when forced elsewhere
+    skip: { os: windows }
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --no-color | cat -v"
+          shell: true
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color | cat -v"
       - assert:
           exit_code: 0
           stdout:
@@ -78,16 +81,18 @@ scenarios:
   - name: color - rejects an unknown --color value instead of ignoring it
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --color banana"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color banana"
       - assert:
           exit_code: { not: 0 }
           stderr:
             contains: "invalid --color"
 
   - name: end of options - treats a dash-leading filename after -- as a positional
+    skip: { os: windows }
     steps:
       - run:
-          command: 'cp "$ISO_EXAMPLES/basei/0110-auth-response.hex" ./-response.hex'
+          shell: true
+          command: 'cp "${env:ISO_EXAMPLES}/basei/0110-auth-response.hex" ./-response.hex'
       - run:
           command: "iso8583tool view -- -response.hex"
       - assert:
@@ -101,7 +106,7 @@ scenarios:
           file: cfg.json
           content: '{"spec":"basei-starter","extensions":[{"id":63,"name":"Acme Blob","strategy":"opaque"}]}'
       - run:
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex --config cfg.json"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --config cfg.json"
       - assert:
           exit_code: 0
           stdout:
@@ -113,7 +118,7 @@ scenarios:
           file: bad.json
           content: '{"extensions":[{"id":1,"strategy":"nope"}]}'
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --config bad.json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --config bad.json"
       - assert:
           exit_code: { not: 0 }
           stderr:

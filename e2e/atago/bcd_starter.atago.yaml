@@ -11,6 +11,7 @@ suite:
 
 scenarios:
   - name: packs and round-trips an EMV TLV tag (55.9F02)
+    skip: { os: windows }
     steps:
       - fixture:
           file: emv.json
@@ -40,6 +41,7 @@ scenarios:
             not_contains: "should be fixed"
 
   - name: packs and round-trips a raw MAC field (64)
+    skip: { os: windows }
     steps:
       - fixture:
           file: mac.json
@@ -55,6 +57,7 @@ scenarios:
             contains: "A1B2C3D4E5F60708"
 
   - name: round-trips a variable-length field with a BCD length prefix (32)
+    skip: { os: windows }
     steps:
       - fixture:
           file: f32.json
@@ -87,6 +90,7 @@ scenarios:
             not_contains: "31323334"
 
   - name: round-trips secondary numeric fields (74, 99, 100)
+    skip: { os: windows }
     steps:
       - fixture:
           file: sec.json
