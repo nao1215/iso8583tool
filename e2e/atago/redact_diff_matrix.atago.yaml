@@ -16,9 +16,9 @@
 #     decode content") on both surfaces.
 #
 # Cross-platform: the diff pairs are built with `convert --output` and diffed as
-# positional file args, and one-side stdin uses `stdin: { inline: ... }`, so
-# almost nothing needs a POSIX shell. The few scenarios that genuinely need a
-# shell pipe are marked `skip: { os: windows }` and kept to a minimum.
+# positional file args, and one-side stdin uses `stdin: { file / base64: ... }`,
+# so no scenario needs a POSIX shell. Every scenario here runs on every OS —
+# there are no `skip: { os: windows }` markers.
 #
 # ISO_EXAMPLES points at examples/ (see e2e/run.sh). The 0100 sample PAN is
 # 4111111111111111 (masked form 411111******1111); its EMV cryptogram is

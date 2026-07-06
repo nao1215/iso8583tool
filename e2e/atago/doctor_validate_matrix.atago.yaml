@@ -47,12 +47,15 @@ scenarios:
 
   - name: doctor prints the full confirm path for the 0100 request
     steps:
+      - fixture:
+          file: msg.hex
+          base64: MzAzMTMwMzAzNzMyMzM0MzM0MzczODMwMzIzODQzMzEzODMyMzAzNDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzEzNjM0MzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDM1MzAzMDMwMzAzNjMwMzQzMTMyMzMzNDM1MzYzMTMyMzMzNDM1MzYzMTMyMzMzNDM1MzYzMDM2MzAzNDMyMzkzMTMyMzUzOTM5MzkzMDM1MzEzMDMwMzEzMjMwMzAzMDMwMzMzNDM0MzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxNDQzMjM5MzEzMjMyMzAzMTMxMzIzMzM0MzUzNjM3MzgzOTMwNTI0NTQ2MzEzMjMzMzQzNTM2MzczODM5NTQ0NTUyNEQ0OTQ0MzAzMTRENDU1MjQzNDg0MTRFNTQzMDMwMzAzMDMwMzAzMTMwMzIzNjRDNEY1OTQxNEM1NDU5M0Q0RjQ2NDY3QzQ5NEU1MzU0NDE0QzRDNEQ0NTRFNTQzRDMwMzAzMzM5MzIzMTMzMzI4MjAyMzkwMDg0MDdBMDAwMDAwMDAzMTAxMDk1MDU4MDAwMDA4MDAwOUEwMzI2MDYwNDlDMDEwMDVGMkEwMjAzOTI5RjAyMDYwMDAwMDAwMDUwMDA5RjAzMDYwMDAwMDAwMDAwMDA5RjA5MDIwMDhDOUYxMDA3MDYwMTEyMDNBMEIwQzA5RjFBMDIwMzkyOUYxRTA4NTQ0NTUzNTQzMTMyMzMzNDlGMjYwODExMjIzMzQ0NTU2Njc3ODg5RjI3MDE4MDlGMzMwM0UwRjhDODlGMzQwMzFGMDMwMjlGMzUwMTIyOUYzNjAyMDAzNDlGMzcwNDExMjIzMzQ0OUY0MTA0MDAwMDAwMDEzMDMyMzc0RjUyNDQ0NTUyNDk0NDNEMzAzMDMwMzEzMjMzN0M0MzQ4NDE0RTRFNDU0QzNENDU0MzRGNEQK
       - run:
-          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+          command: "iso8583tool doctor msg.hex --no-color"
       - assert:
           exit_code: 0
           stdout:
-            contains: "iso8583tool view --spec basei-starter ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+            contains: "iso8583tool view --spec basei-starter msg.hex"
 
   - name: doctor marks the non-fitting presets "no" with a cannot-unpack reason for 0100
     steps:

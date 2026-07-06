@@ -2,8 +2,9 @@
 # Sensitive-data masking: view/redact/diff mask a PAN/track wherever it appears
 # without over-masking a plain business identifier or a non-PAN field such as
 # the country code (field 20). The ShellSpec view_json helper
-# (printf doc | convert --to hex | view - --format json) is inlined into each
-# shell: true pipeline. Run with: make e2e   (or e2e/run.sh)
+# (printf doc | convert --to hex | view - --format json) is expressed here in a
+# cross-platform, shell-free form: the JSON doc is written to a workdir fixture,
+# converted to a hex file with --output, then viewed. Run with: make e2e.
 version: "1"
 
 suite:
@@ -11,85 +12,101 @@ suite:
 
 scenarios:
   - name: does not mask a non-PAN business identifier
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"ORDER_ID=1234567890123|TOKEN=ABC"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"ORDER_ID=1234567890123|TOKEN=ABC"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             contains: "ORDER_ID=1234567890123"
 
   - name: masks a dash-separated PAN
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111-1111-1111-1111"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111-1111-1111-1111"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "1111-1111-1111"
 
   - name: masks a space-separated PAN
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111 1111 1111 1111"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111 1111 1111 1111"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "1111 1111 1111"
 
   - name: masks a PAN embedded in a non-private free-form field
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","44":"PAN=4111111111111111"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","44":"PAN=4111111111111111"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "4111111111111111"
 
   - name: masks the extended PAN field 34
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0100","fields":{"11":"123456","34":"411111111111111111111111"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0100","fields":{"11":"123456","34":"411111111111111111111111"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "411111111111111111111111"
 
   - name: does not mask the country code field 20
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0100","fields":{"11":"123456","20":"840"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0100","fields":{"11":"123456","20":"840"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             contains: '"20": "840"'
 
   - name: shows the raw field 20 change in diff
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: a.json
+          content: '{"mti":"0100","fields":{"11":"123456","20":"840"}}'
+      - fixture:
+          file: b.json
+          content: '{"mti":"0100","fields":{"11":"123456","20":"392"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0100","fields":{"11":"123456","20":"840"}}' | iso8583tool convert --to hex > a.hex
-            printf '%s' '{"mti":"0100","fields":{"11":"123456","20":"392"}}' | iso8583tool convert --to hex > b.hex
+          command: "iso8583tool convert a.json --to hex --output a.hex"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output b.hex"
       - run:
           command: "iso8583tool diff a.hex b.hex --no-color"
       - assert:
@@ -100,36 +117,42 @@ scenarios:
               - "392"
 
   - name: masks a whole free-form track, not just its PAN
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"TRACK2=4111111111111111D29122011234567890"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"TRACK2=4111111111111111D29122011234567890"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "29122011234567890"
 
   - name: masks an underscore-labeled PAN (card_no)
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"card_no=4222222222222222"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"card_no=4222222222222222"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:
             not_contains: "4222222222222222"
 
   - name: masks a spaced-label PAN (card number)
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: doc.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"card number=4222222222222222"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"card number=4222222222222222"}}' | iso8583tool convert --to hex | iso8583tool view - --format json
+          command: "iso8583tool convert doc.json --to hex --output m.hex"
+      - run:
+          command: "iso8583tool view m.hex --format json"
       - assert:
           exit_code: 0
           stdout:

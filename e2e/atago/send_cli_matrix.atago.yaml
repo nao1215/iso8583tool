@@ -492,8 +492,11 @@ scenarios:
 
   - name: a two-digit MTI in the JSON doc is rejected before sending
     steps:
+      - fixture:
+          file: doc.json
+          base64: eyJtdGkiOiIwMSIsImZpZWxkcyI6eyI3MCI6IjMwMSJ9fQ==
       - run:
-          command: "iso8583tool send 127.0.0.1:1 --raw '{\"mti\":\"01\",\"fields\":{\"70\":\"301\"}}'"
+          command: "iso8583tool send 127.0.0.1:1 doc.json"
       - assert:
           exit_code: 1
           stderr:
@@ -501,8 +504,11 @@ scenarios:
 
   - name: an alphabetic MTI in the JSON doc is rejected before sending
     steps:
+      - fixture:
+          file: doc.json
+          base64: eyJtdGkiOiJBQkNEIiwiZmllbGRzIjp7IjcwIjoiMzAxIn19
       - run:
-          command: "iso8583tool send 127.0.0.1:1 --raw '{\"mti\":\"ABCD\",\"fields\":{\"70\":\"301\"}}'"
+          command: "iso8583tool send 127.0.0.1:1 doc.json"
       - assert:
           exit_code: 1
           stderr:
@@ -683,8 +689,11 @@ scenarios:
 
   - name: dry-run packs a JSON document from --raw
     steps:
+      - fixture:
+          file: doc.json
+          base64: eyJtdGkiOiIwODAwIiwiZmllbGRzIjp7IjcwIjoiMzAxIn19
       - run:
-          command: "iso8583tool send 127.0.0.1:1 --raw '{\"mti\":\"0800\",\"fields\":{\"70\":\"301\"}}' --dry-run --no-color"
+          command: "iso8583tool send 127.0.0.1:1 doc.json --dry-run --no-color"
       - assert:
           exit_code: 0
           stdout:

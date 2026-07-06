@@ -1,9 +1,10 @@
 # Migrated from iso8583tool's ShellSpec spec/field_count_spec.sh.
 # convert --output summary: the "packed N fields" count must report top-level
 # ISO fields, the same number doctor reports as field_count, instead of counting
-# every TLV subtag as a separate field. The ShellSpec `When call test "$a" = "$b"`
-# is ported as a single shell: true run that computes both sides and echoes
-# OK only when they are equal, asserted via stdout equals.
+# every TLV subtag as a separate field. The ShellSpec compared the two values at
+# runtime; here both sides are pinned to the deterministic N=21 that the
+# basei-starter 0100 sample yields, so convert's summary and doctor's field_count
+# are each asserted to equal 21 (proving they agree) shell-free.
 # Run with: make e2e   (or e2e/run.sh)
 version: "1"
 
@@ -12,15 +13,16 @@ suite:
 
 scenarios:
   - name: reports the top-level field count matching doctor
-    skip: { os: windows }
     steps:
       - run:
-          shell: true
-          command: |
-            summary=$(iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.json" --output out.hex | head -1)
-            count=$(iso8583tool doctor out.hex --format json | sed -n 's/.*"field_count": \([0-9]*\).*/\1/p' | head -1)
-            [ "$summary" = "Converted with basei-starter (packed $count fields to hex)." ] && echo OK || echo MISMATCH
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --output out.hex"
       - assert:
           exit_code: 0
           stdout:
-            equals: "OK"
+            contains: "Converted with basei-starter (packed 21 fields to hex)."
+      - run:
+          command: "iso8583tool doctor out.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"field_count": 21'

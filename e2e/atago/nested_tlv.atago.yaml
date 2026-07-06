@@ -93,19 +93,19 @@ scenarios:
             contains: "Field 55.70.9F02 changed"
 
   - name: keeps a top-level tag and a nested tag set on the same field
-    skip: { os: windows }
     # A message that mixes "55.82" (top-level) with "55.70.9F02" (constructed)
     # must round-trip both; the flat tag previously overwrote the whole composite.
     steps:
       - fixture:
           file: spec.json
           content: *spec_tlv
+      - fixture:
+          file: mix.json
+          content: '{"mti":"0110","fields":{"11":"123456"},"binary_fields":{"55.82":"3900","55.70.9F02":"000000005000"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456"},"binary_fields":{"55.82":"3900","55.70.9F02":"000000005000"}}' > mix.json
-            iso8583tool convert mix.json --to hex --spec spec.json --output mix.hex
-            iso8583tool convert mix.hex --spec spec.json
+          command: "iso8583tool convert mix.json --to hex --spec spec.json --output mix.hex"
+      - run:
+          command: "iso8583tool convert mix.hex --spec spec.json"
       - assert:
           exit_code: 0
           stdout:

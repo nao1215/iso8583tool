@@ -74,12 +74,15 @@ scenarios:
               - '"request_view"'
 
   - name: reads the message from stdin via -
-    skip: { os: windows }
     services: *mock_2byte
     steps:
+      - fixture:
+          file: msg.hex
+          base64: MzAzODMwMzAzMDMyMzMzODMwMzEzMDMwMzAzMDM4MzEzMDMwMzAzMDMwMzQzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzNjMwMzQzMTM2MzEzNjMxMzYzNjM1MzQzMzMyMzEzMTM2MzEzNjMxMzYzMDM2MzAzNDMwMzAzMTU0NDU1MjRENEU0NTU0MzEzMDMxMzU0ODQ1NDE1MjU0NDI0NTQxNTQzRDQyNDE1MzQ1NDkzMzMwMzE=
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} - --framing 2byte-binary < ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex"
+          command: "iso8583tool send ${addr} - --framing 2byte-binary"
+          stdin:
+            file: msg.hex
       - assert:
           exit_code: 0
           stdout:

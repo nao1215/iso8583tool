@@ -12,8 +12,9 @@
 # Env (exported by e2e/run.sh): ISO_EXAMPLES == abs path to examples/.
 # Reference it with atago host-env expansion: ${env:ISO_EXAMPLES}.
 # Almost everything runs shell-free (positional file / inline --raw / base64
-# stdin / --output into the workdir) so it is cross-platform; only the two
-# scenarios that truly need a POSIX redirect/pipe are gated skip:{os:windows}.
+# stdin / --output into the workdir) so it is cross-platform. Only the oversized
+# 1 MiB input scenario stays gated skip:{os:windows}: it needs the POSIX
+# /dev/zero device to synthesize a >1 MiB file and has no portable equivalent.
 version: "1"
 
 suite:
@@ -668,6 +669,10 @@ scenarios:
             contains: "^[ERMID01"
 
   - name: negative - oversized input over the 1 MiB limit is rejected before decode
+    # win-skip: needs a >1 MiB input; the only sources are the POSIX /dev/zero
+    # device or a committed/embedded >1 MiB fixture. atago has no primitive that
+    # generates N zero bytes cross-platform and this task edits only the spec
+    # files, so no portable form exists.
     skip: { os: windows }
     steps:
       - run:
@@ -680,12 +685,14 @@ scenarios:
           stderr:
             contains: "exceeds the 1048576-byte limit"
 
-  - name: negative - stdin round-trip via a POSIX pipe decodes a piped hex message
-    skip: { os: windows }
+  - name: negative - stdin round-trip decodes a piped hex message
     steps:
       - run:
-          shell: true
-          command: "iso8583tool sample 0210-financial-response --format hex | iso8583tool view - --format json"
+          command: "iso8583tool sample 0210-financial-response --format hex"
+          stdout_to: piped0210.hex
+      - run:
+          command: "iso8583tool view - --format json"
+          stdin: { file: piped0210.hex }
       - assert:
           exit_code: 0
           stdout:

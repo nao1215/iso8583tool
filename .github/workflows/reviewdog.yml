@@ -35,6 +35,10 @@ jobs:
           reporter: github-pr-review
           level: warning
           locale: "US"
+          # "Authorised"/"Authorisation" are the official British-spelled EMV tag
+          # names (e.g. tag 9F02 "Amount, Authorised (Numeric)") used verbatim in
+          # the spec and asserted in tests, so they are not misspellings here.
+          ignore: "authorised,authorisation"
 
   actionlint:
     runs-on: ubuntu-latest

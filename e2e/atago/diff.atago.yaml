@@ -1,8 +1,10 @@
 # Migrated from iso8583tool's ShellSpec spec/diff_spec.sh.
-# diff: field-level comparison, JSON output (jq), filtering, stdin, and the
-# identical-message case. The ShellSpec setup_pair helper (copy before.hex, then
-# convert | sed | convert into after.hex with field 4 / 55.9F02 bumped) is
-# inlined as a shell: true setup run in each scenario that needs it.
+# diff: field-level comparison, JSON output, filtering, stdin, and the
+# identical-message case. The ShellSpec setup_pair helper (which built the pair
+# with a copy + convert | sed | convert pipeline) is replaced by shell-free
+# workdir JSON fixtures that `convert --output` into before.hex / after.hex with
+# field 4 / 55.9F02 differing, so every scenario runs on every OS. JSON output is
+# asserted via atago's `stdout.json` JSONPath matcher instead of jq.
 # Run with: make e2e   (or e2e/run.sh)
 version: "1"
 
@@ -11,13 +13,17 @@ suite:
 
 scenarios:
   - name: reports changed fields in text form
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: before.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: after.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
       - run:
-          shell: true
-          command: |
-            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+          command: "iso8583tool convert before.json --to hex --output before.hex"
+      - run:
+          command: "iso8583tool convert after.json --to hex --output after.hex"
       - run:
           command: "iso8583tool diff before.hex after.hex"
       - assert:
@@ -29,20 +35,23 @@ scenarios:
               - "+ 000000009999"
 
   - name: emits jq-compatible JSON
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: before.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: after.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
       - run:
-          shell: true
-          command: |
-            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+          command: "iso8583tool convert before.json --to hex --output before.hex"
       - run:
-          shell: true
-          command: 'iso8583tool diff before.hex after.hex --format json | jq -r ".changes[0].kind"'
+          command: "iso8583tool convert after.json --to hex --output after.hex"
+      - run:
+          command: "iso8583tool diff before.hex after.hex --format json"
       - assert:
           exit_code: 0
           stdout:
-            equals: "changed"
+            json: { path: "$.changes[0].kind", equals: "changed" }
 
   - name: reports no differences for identical messages
     steps:
@@ -54,13 +63,17 @@ scenarios:
             contains: "No differences."
 
   - name: filters to a field subtree
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: before.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"},"binary_fields":{"55.9F02":"000000005000"}}'
+      - fixture:
+          file: after.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"},"binary_fields":{"55.9F02":"000000009999"}}'
       - run:
-          shell: true
-          command: |
-            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+          command: "iso8583tool convert before.json --to hex --output before.hex"
+      - run:
+          command: "iso8583tool convert after.json --to hex --output after.hex"
       - run:
           command: "iso8583tool diff before.hex after.hex --filter 55"
       - assert:
@@ -72,16 +85,21 @@ scenarios:
             not_contains: "Field 4 "
 
   - name: reads one side from stdin
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: before.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: after.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
       - run:
-          shell: true
-          command: |
-            cp "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" before.hex
-            iso8583tool convert "${env:ISO_EXAMPLES}/basei/0100-auth-request.hex" | sed 's/"000000005000"/"000000009999"/' | iso8583tool convert > after.hex
+          command: "iso8583tool convert before.json --to hex --output before.hex"
       - run:
-          shell: true
-          command: 'cat after.hex | iso8583tool diff before.hex -'
+          command: "iso8583tool convert after.json --to hex --output after.hex"
+      - run:
+          command: "iso8583tool diff before.hex -"
+          stdin:
+            file: after.hex
       - assert:
           exit_code: 0
           stdout:
@@ -124,13 +142,17 @@ scenarios:
             contains: "unsupported format"
 
   - name: private-field safety - masks an embedded PAN by default
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4222222222222222"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}' | iso8583tool convert --to hex > pa.hex
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4222222222222222"}}' | iso8583tool convert --to hex > pb.hex
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
       - run:
           command: "iso8583tool diff pa.hex pb.hex --color never"
       - assert:
@@ -139,13 +161,17 @@ scenarios:
             not_contains: "4111111111111111"
 
   - name: private-field safety - reveals the embedded PAN with --unsafe
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4222222222222222"}}'
       - run:
-          shell: true
-          command: |
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}' | iso8583tool convert --to hex > pa.hex
-            printf '%s' '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4222222222222222"}}' | iso8583tool convert --to hex > pb.hex
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
       - run:
           command: "iso8583tool diff pa.hex pb.hex --color never --unsafe"
       - assert:

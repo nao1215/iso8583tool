@@ -67,12 +67,15 @@ scenarios:
             contains: "Validation: ok"
 
   - name: flags a hollow response under --strict
-    skip: { os: windows }
     steps:
       # A 0110 carrying only a STAN unpacks, but is not a well-formed response.
+      - fixture:
+          file: hollow.json
+          content: '{"mti":"0110","fields":{"11":"123456"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\"}}" | iso8583tool convert --to hex | iso8583tool validate - --strict'
+          command: "iso8583tool convert hollow.json --to hex --output hollow.hex"
+      - run:
+          command: "iso8583tool validate hollow.hex --strict"
       - assert:
           exit_code:
             not: 0
@@ -82,13 +85,16 @@ scenarios:
               - "39"
 
   - name: omits the Decoded Fields heading when only the MTI decoded
-    skip: { os: windows }
     steps:
       # A message whose only decoded entry is the MTI must not print an empty
       # "Decoded Fields:" section (the MTI is shown on its own line above).
+      - fixture:
+          file: mti0500.json
+          content: '{"mti":"0500","fields":{"11":"123456"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0500\",\"fields\":{\"11\":\"123456\"}}" | iso8583tool convert --to hex | iso8583tool validate - --strict'
+          command: "iso8583tool convert mti0500.json --to hex --output mti0500.hex"
+      - run:
+          command: "iso8583tool validate mti0500.hex --strict"
       - assert:
           exit_code: 0
           stdout:

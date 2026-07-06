@@ -77,22 +77,24 @@ scenarios:
             empty: false
 
   - name: fails to pack a document with no mti
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: nomti.json
+          content: '{"fields":{}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"fields\":{}}" | iso8583tool convert --to hex'
+          command: "iso8583tool convert nomti.json --to hex"
       - assert:
           exit_code: { not: 0 }
           stderr:
             contains: "mti"
 
   - name: fails to pack a document with an invalid TLV tag
-    skip: { os: windows }
     steps:
+      - fixture:
+          file: badtlv.json
+          content: '{"mti":"0100","binary_fields":{"55.ZZ":"00"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0100\",\"binary_fields\":{\"55.ZZ\":\"00\"}}" | iso8583tool convert --to hex'
+          command: "iso8583tool convert badtlv.json --to hex"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -100,6 +102,10 @@ scenarios:
 
   - name: oversized input - rejects an oversized file with a clear limit error
     skip: { os: windows }
+    # win-skip: needs a >1MiB generated file. The input must exceed the 1 MiB
+    # source cap; there is no shell-free way to produce it (a 1.05 MiB inline
+    # base64 fixture would bloat this spec, and a committed fixture is out of
+    # scope). Kept POSIX-only via head/tr.
     # ~1.05 MiB of '0' (valid, even-length hex) just over the 1 MiB source cap.
     steps:
       - run:
@@ -114,6 +120,9 @@ scenarios:
 
   - name: oversized input - rejects oversized stdin with a clear limit error
     skip: { os: windows }
+    # win-skip: needs a >1MiB generated file. The stdin stream must exceed the
+    # 1 MiB source cap; there is no shell-free way to produce it (a 1.05 MiB
+    # inline base64 stdin would bloat this spec). Kept POSIX-only via head/tr.
     steps:
       - run:
           shell: true

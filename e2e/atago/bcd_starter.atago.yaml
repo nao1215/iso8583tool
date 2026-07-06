@@ -11,16 +11,15 @@ suite:
 
 scenarios:
   - name: packs and round-trips an EMV TLV tag (55.9F02)
-    skip: { os: windows }
     steps:
       - fixture:
           file: emv.json
           content: '{"mti":"0100","fields":{"2":"4019249999999999","3":"000000","4":"000000001000","7":"0605123456","11":"123456","41":"TERMID01"},"binary_fields":{"55.9F02":"000000001000"}}'
       - run:
-          shell: true
-          command: |
-            iso8583tool convert emv.json --to hex --encoding hex --spec spec87bcd-starter > emv.hex
-            iso8583tool view emv.hex --encoding hex --spec spec87bcd-starter --format json
+          command: "iso8583tool convert emv.json --to hex --encoding hex --spec spec87bcd-starter"
+          stdout_to: emv.hex
+      - run:
+          command: "iso8583tool view emv.hex --encoding hex --spec spec87bcd-starter --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -41,32 +40,30 @@ scenarios:
             not_contains: "should be fixed"
 
   - name: packs and round-trips a raw MAC field (64)
-    skip: { os: windows }
     steps:
       - fixture:
           file: mac.json
           content: '{"mti":"0100","fields":{"2":"4019249999999999","3":"000000","4":"000000001000","7":"0605123456","11":"123456","41":"TERMID01"},"binary_fields":{"64":"A1B2C3D4E5F60708"}}'
       - run:
-          shell: true
-          command: |
-            iso8583tool convert mac.json --to hex --encoding hex --spec spec87bcd-starter > mac.hex
-            iso8583tool view mac.hex --encoding hex --spec spec87bcd-starter --unsafe --format json
+          command: "iso8583tool convert mac.json --to hex --encoding hex --spec spec87bcd-starter"
+          stdout_to: mac.hex
+      - run:
+          command: "iso8583tool view mac.hex --encoding hex --spec spec87bcd-starter --unsafe --format json"
       - assert:
           exit_code: 0
           stdout:
             contains: "A1B2C3D4E5F60708"
 
   - name: round-trips a variable-length field with a BCD length prefix (32)
-    skip: { os: windows }
     steps:
       - fixture:
           file: f32.json
           content: '{"mti":"0100","fields":{"2":"4019249999999999","3":"000000","4":"000000001000","7":"0605123456","11":"123456","32":"123456","41":"TERMID01"}}'
       - run:
-          shell: true
-          command: |
-            iso8583tool convert f32.json --to hex --encoding hex --spec spec87bcd-starter > f32.hex
-            iso8583tool view f32.hex --encoding hex --spec spec87bcd-starter --format json
+          command: "iso8583tool convert f32.json --to hex --encoding hex --spec spec87bcd-starter"
+          stdout_to: f32.hex
+      - run:
+          command: "iso8583tool view f32.hex --encoding hex --spec spec87bcd-starter --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -90,16 +87,15 @@ scenarios:
             not_contains: "31323334"
 
   - name: round-trips secondary numeric fields (74, 99, 100)
-    skip: { os: windows }
     steps:
       - fixture:
           file: sec.json
           content: '{"mti":"0800","fields":{"11":"123456","70":"301","74":"0000000001","99":"12345678901","100":"98765432109"}}'
       - run:
-          shell: true
-          command: |
-            iso8583tool convert sec.json --to hex --spec spec87bcd-starter > sec.hex
-            iso8583tool convert sec.hex --spec spec87bcd-starter --encoding hex --to json
+          command: "iso8583tool convert sec.json --to hex --spec spec87bcd-starter"
+          stdout_to: sec.hex
+      - run:
+          command: "iso8583tool convert sec.hex --spec spec87bcd-starter --encoding hex --to json"
       - assert:
           exit_code: 0
           stdout:

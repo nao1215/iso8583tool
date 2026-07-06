@@ -169,36 +169,31 @@ scenarios:
             contains: "text field"
 
   - name: round-trip is stable through hex -> json -> hex
-    skip: { os: windows }
     steps:
       - run:
-          shell: true
-          command: |
-            h="$(iso8583tool sample 0100-auth-request --format hex)"
-            back="$(printf "%s" "$h" | iso8583tool convert | iso8583tool convert)"
-            [ "$(printf "%s" "$h")" = "$(printf "%s" "$back")" ] && echo SAME || echo DIFF
+          command: "iso8583tool sample 0100-auth-request --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex"
       - assert:
           exit_code: 0
           stdout:
-            equals: "SAME"
+            equals: "3031303037323343343738303238433138323034303030303030303030303030303030303136343131313131313131313131313131313030303030303030303030303030353030303036303431323334353631323334353631323334353630363034323931323539393930353130303132303030303334343131313131313131313131313131314432393132323031313233343536373839305245463132333435363738395445524D494430314D45524348414E54303030303030313032364C4F59414C54593D4F46467C494E5354414C4C4D454E543D3030333932313332820239008407A0000000031010950580000080009A032606049C01005F2A0203929F02060000000050009F03060000000000009F0902008C9F100706011203A0B0C09F1A0203929F1E0854455354313233349F260811223344556677889F2701809F3303E0F8C89F34031F03029F3501229F360200349F3704112233449F4104000000013032374F5244455249443D3030303132337C4348414E4E454C3D45434F4D"
 
   - name: is stable through raw -> json -> raw with the packed-BCD starter preset
-    skip: { os: windows }
     steps:
       - fixture:
           file: message.bin
           base64: AQBwBAAAAAAAABBAGSSZmZmZmTJzJwAAAAAROCIE
       - run:
-          shell: true
-          command: |
-            iso8583tool convert message.bin --encoding raw --spec spec87bcd-starter > doc.json &&
-            iso8583tool convert doc.json --to hex --encoding raw --spec spec87bcd-starter --output back.bin >/dev/null &&
-            cmp -s message.bin back.bin &&
-            echo SAME
+          command: "iso8583tool convert message.bin --encoding raw --spec spec87bcd-starter --output doc.json"
+      - run:
+          command: "iso8583tool convert doc.json --to hex --spec spec87bcd-starter"
       - assert:
           exit_code: 0
           stdout:
-            equals: "SAME"
+            equals: "010070040000000000001040192499999999993273270000000011382204"
 
   - name: to a file writes the result and reports it
     steps:
