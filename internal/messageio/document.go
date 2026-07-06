@@ -54,7 +54,31 @@ func (d Document) Validate() error {
 	if d.MTI == "" {
 		return errors.New("message document requires mti")
 	}
+	if err := validateMTI(d.MTI); err != nil {
+		return err
+	}
 	return d.validatePaths()
+}
+
+// validateMTI rejects a message type indicator that is not exactly four decimal
+// digits. An ISO 8583 MTI is a 4-digit numeric code (e.g. 0100, 0810); catching
+// a malformed one here yields a plain "MTI must be exactly 4 digits" instead of
+// moov's cryptic pack-time internals ("field length: 2 should be fixed: 4") or,
+// worse, silently packing an MTI that no reader can interpret.
+func validateMTI(mti string) error {
+	if len(mti) != 4 || !isAllDigits(mti) {
+		return fmt.Errorf("mti must be exactly 4 digits, got %q", mti)
+	}
+	return nil
+}
+
+func isAllDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // pathEntry records the original spelling and source map of a canonical path so

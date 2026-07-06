@@ -42,11 +42,20 @@ func loadJSONSpec(baseDir, path string) (*Spec, error) {
 		resolved = filepath.Join(baseDir, path)
 	}
 	if ext := strings.ToLower(filepath.Ext(resolved)); ext != ".json" {
-		return nil, fmt.Errorf("unsupported spec file %q: only JSON is supported", path)
+		// A bare word with no path separator and no extension is almost certainly
+		// a mistyped preset name, not a file; point the user at `specs` instead of
+		// telling them their preset "is not JSON".
+		if !strings.ContainsAny(path, `/\`) && filepath.Ext(path) == "" {
+			return nil, fmt.Errorf("unknown spec %q: not a built-in preset and not a .json spec path; run \"iso8583tool specs\" to list presets, or pass a moov-io/iso8583 JSON spec path", path)
+		}
+		return nil, fmt.Errorf("unsupported spec file %q: only JSON specs are supported (a .json path) or a built-in preset name (run \"iso8583tool specs\")", path)
 	}
 
 	data, err := os.ReadFile(filepath.Clean(resolved))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("spec file not found: %s", path)
+		}
 		return nil, err
 	}
 	messageSpec, err := moovspecs.ImportJSON(data)

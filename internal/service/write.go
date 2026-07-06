@@ -150,6 +150,12 @@ func marshalPathError(label, path string, err error) error {
 		top := topLevelID(path)
 		return fmt.Errorf("%s %s: field %s is a plain field in this spec and has no dot-path subfields; set field %s as a whole value instead", label, path, top, top)
 	}
+	// moov reports an undefined intermediate/leaf tag as "field N is not defined
+	// in the spec" (and even misspells "marshaling filed"). Rewrite it into a
+	// plain, actionable sentence instead of leaking the library's internals.
+	if strings.Contains(err.Error(), "not defined in the spec") {
+		return fmt.Errorf("%s %s: a segment of this path is not defined in the active spec; define it in the spec or set a field the spec knows", label, path)
+	}
 	return fmt.Errorf("%s %s: %w", label, path, err)
 }
 
