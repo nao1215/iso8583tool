@@ -1,0 +1,1058 @@
+# Deep E2E matrix for the convert / sample / specs surfaces.
+#
+# These scenarios exercise contracts the existing convert.atago.yaml,
+# specs.atago.yaml, pipeline.atago.yaml and bcd_starter.atago.yaml do NOT already
+# cover: direction auto-detection across ALL nine bundled example messages (both
+# ways), the forced --to overrides and their mismatch hints, --raw parity,
+# exhaustive MTI and document-path validation with NEW field ids/messages,
+# --output state-change proofs (changes/file), unmasked round-trip fidelity,
+# byte-clean stderr, encoding auto/raw detection, cross-platform file round-trips
+# (with an optional cmp byte-equality check gated to non-Windows), the friendly
+# unpack-failure error, the full sample catalog in JSON and hex, and specs JSON
+# structure via JSONPath. Run with: make e2e   (or e2e/run.sh)
+version: "1"
+
+suite:
+  name: iso8583tool convert/sample/specs matrix
+
+scenarios:
+  # --- Direction auto-detect: JSON document -> uppercase hex (all 9) ---------
+  - name: auto-detect packs 0100 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30313030[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0110 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0110-auth-response.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30313130[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0200 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30323030[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0210 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0210-financial-response.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30323130[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0420 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30343230[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0430 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0430-reversal-response.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30343330[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0800 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0800-network-echo.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30383030[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs 0810 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30383130[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: auto-detect packs the unknown-TLV 0100 JSON to uppercase hex
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30313030[0-9A-F]"
+      - assert:
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  # --- Direction auto-detect: hex message -> JSON document (all 9) -----------
+  - name: auto-detect unpacks 0100 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: auto-detect unpacks 0110 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  - name: auto-detect unpacks 0200 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0200"'
+
+  - name: auto-detect unpacks 0210 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0210"'
+
+  - name: auto-detect unpacks 0420 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0420"'
+
+  - name: auto-detect unpacks 0430 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0430"'
+
+  - name: auto-detect unpacks 0800 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: auto-detect unpacks 0810 hex to a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0810"'
+
+  - name: auto-detect unpacks the unknown-TLV hex and preserves the unknown tag
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"mti": "0100"'
+              - '"55.DF8129"'
+
+  # --- Forced --to overrides & mismatch hints -------------------------------
+  - name: forced --to hex packs a JSON document
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0210-financial-response.json --to hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30323130[0-9A-F]"
+
+  - name: forced --to json unpacks a message
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --to json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0200"'
+
+  - name: forced --to json is case-insensitive
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --to JSON"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  - name: --to hex on a hex message hints the input is not JSON
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --to hex"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "the input is not JSON"
+
+  - name: --to json on a JSON document hints it already looks like JSON
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --to json"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "already looks like a JSON document"
+
+  - name: --to bogus is rejected with an unsupported-direction error
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --to bogus"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported --to"
+
+  # --- --raw parity ---------------------------------------------------------
+  - name: --raw packs an inline JSON document to hex
+    steps:
+      - run:
+          command: 'iso8583tool convert --raw ''{"mti":"0100","fields":{"11":"000001"}}'' --to hex'
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: --raw with an inline hex message unpacks to JSON via --to json
+    steps:
+      - run:
+          command: "iso8583tool convert --raw 3031303037323343343738303238433138323034303030303030303030303030303030303136343131313131313131313131313131313030303030303030303030303030353030303036303431323334353631323334353631323334353630363034323931323539393930353130303132303030303334343131313131313131313131313131314432393132323031313233343536373839305245463132333435363738395445524D494430314D45524348414E54303030303030313032364C4F59414C54593D4F46467C494E5354414C4C4D454E543D3030333932313332820239008407A0000000031010950580000080009A032606049C01005F2A0203929F02060000000050009F03060000000000009F0902008C9F100706011203A0B0C09F1A0203929F1E0854455354313233349F260811223344556677889F2701809F3303E0F8C89F34031F03029F3501229F360200349F3704112233449F4104000000013032374F5244455249443D3030303132337C4348414E4E454C3D45434F4D --to json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: --raw with an inline hex message auto-detects the unpack direction
+    steps:
+      - run:
+          command: "iso8583tool convert --raw 3031303037323343343738303238433138323034303030303030303030303030303030303136343131313131313131313131313131313030303030303030303030303030353030303036303431323334353631323334353631323334353630363034323931323539393930353130303132303030303334343131313131313131313131313131314432393132323031313233343536373839305245463132333435363738395445524D494430314D45524348414E54303030303030313032364C4F59414C54593D4F46467C494E5354414C4C4D454E543D3030333932313332820239008407A0000000031010950580000080009A032606049C01005F2A0203929F02060000000050009F03060000000000009F0902008C9F100706011203A0B0C09F1A0203929F1E0854455354313233349F260811223344556677889F2701809F3303E0F8C89F34031F03029F3501229F360200349F3704112233449F4104000000013032374F5244455249443D3030303132337C4348414E4E454C3D45434F4D"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: --raw with inline JSON auto-detects the pack direction
+    steps:
+      - run:
+          command: 'iso8583tool convert --raw ''{"mti":"0800","fields":{"11":"000001","70":"301"}}'''
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^30383030[0-9A-F]"
+
+  # --- MTI validation -------------------------------------------------------
+  - name: rejects a non-numeric MTI
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"ABCD","fields":{"11":"000001"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "mti must be exactly 4 digits"
+
+  - name: rejects a too-short MTI
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"01","fields":{"11":"000001"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "mti must be exactly 4 digits"
+
+  - name: rejects a too-long MTI
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"01000","fields":{"11":"000001"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "mti must be exactly 4 digits"
+
+  - name: rejects a document with no MTI
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"fields":{"11":"000001"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "requires mti"
+
+  # --- Document path validation (NEW ids/messages) --------------------------
+  - name: rejects reserved id 0 via fields with an mti hint
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0200","fields":{"0":"0210"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "reserved for mti"
+
+  - name: rejects reserved id 0 via binary_fields with an mti hint
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0200","binary_fields":{"0":"30323130"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "reserved for mti"
+
+  - name: rejects the bitmap id 1 via fields
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0200","fields":{"1":"ABCDEF"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "bitmap"
+
+  - name: rejects the bitmap id 1 via binary_fields
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0200","binary_fields":{"1":"FFFFFFFF"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "bitmap"
+
+  - name: rejects an out-of-range id 129
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"129":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid field id"
+
+  - name: rejects a far out-of-range id 999
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"999":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid field id"
+
+  - name: rejects a negative field id
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"-2":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid field id"
+
+  - name: rejects a non-numeric field id
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"A":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid field id"
+
+  - name: rejects a non-numeric nested field id
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"A.1":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid field id"
+
+  - name: rejects an invalid TLV tag in a dot-path
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"55.ZZ":"00"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid TLV tag"
+
+  - name: rejects an empty segment from a double dot
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"55..70":"00"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "empty segment"
+
+  - name: rejects a trailing-dot path
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"55.":"00"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "empty segment"
+
+  - name: rejects a leading-dot path
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{".55":"00"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "empty segment"
+
+  - name: rejects leading whitespace in a field key
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{" 43":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "whitespace"
+
+  - name: rejects trailing whitespace in a field key
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"43 ":"x"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "whitespace"
+
+  - name: rejects a leading-zero duplicate alias (043 vs 43)
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"043":"a","43":"b"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "both address field"
+
+  - name: rejects a leading-zero duplicate alias (011 vs 11)
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"011":"000001","11":"000002"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "both address field"
+
+  - name: rejects a case-different TLV alias (55.5F2A vs 55.5f2a)
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"55.5F2A":"0840","55.5f2a":"0978"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "both address field"
+
+  - name: rejects a path defined in both fields and binary_fields
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"43":"x"},"binary_fields":{"43":"3030"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "defined in both"
+
+  - name: rejects a parent path that conflicts with a nested child
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","fields":{"62":"x"},"binary_fields":{"62.1":"00"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "conflicts with nested path"
+
+  - name: rejects raw bytes routed to a text field via binary_fields (F2)
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"2":"000102030405"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "text field"
+
+  - name: rejects an undefined dot-path tag under the active spec
+    steps:
+      - run:
+          command: iso8583tool convert --to hex
+          stdin: '{"mti":"0100","binary_fields":{"55.70.9F02":"000000001000"}}'
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "not defined in the active spec"
+
+  # --- --output writes a file (state-change proofs) -------------------------
+  - name: --output writes the packed hex to a file and reports it
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --output out.hex"
+      - assert:
+          exit_code: 0
+          changes:
+            created: [out.hex]
+          file:
+            path: out.hex
+            exists: true
+          stdout:
+            contains:
+              - "Converted with"
+              - "Output:"
+              - "unmasked"
+
+  - name: --output names the destination in the sensitivity note
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --output secret.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "secret.hex holds the PAN/track/PIN in the clear"
+              - "use redact to share"
+
+  - name: --output writes an unpacked JSON document to a file
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --output out.json"
+      - assert:
+          exit_code: 0
+          changes:
+            created: [out.json]
+          file:
+            path: out.json
+            contains: '"mti": "0110"'
+          stdout:
+            contains: "unpacked message 0110"
+
+  # --- Unmasked round-trip fidelity -----------------------------------------
+  - name: convert output holds the real PAN unmasked
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "4111111111111111"
+
+  - name: convert output does not carry the masked PAN form
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "411111******1111"
+
+  - name: unmasked PAN survives a JSON file written by --output
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --output pan.json"
+      - assert:
+          exit_code: 0
+          file:
+            path: pan.json
+            contains: "4111111111111111"
+
+  # --- Byte-clean stderr when piped -----------------------------------------
+  - name: unpacking a message keeps stderr empty when piped
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+
+  - name: packing a document keeps stderr empty when piped
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.json"
+      - assert:
+          exit_code: 0
+          stderr:
+            empty: true
+
+  # --- Encodings: raw vs hex ------------------------------------------------
+  - name: --encoding raw unpacks a packed-BCD raw capture
+    steps:
+      - fixture:
+          file: message.bin
+          base64: AQBwBAAAAAAAABBAGSSZmZmZmTJzJwAAAAAROCIE
+      - run:
+          command: "iso8583tool convert message.bin --encoding raw --spec spec87bcd-starter"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: --encoding auto detects a raw packed-BCD capture
+    steps:
+      - fixture:
+          file: message.bin
+          base64: AQBwBAAAAAAAABBAGSSZmZmZmTJzJwAAAAAROCIE
+      - run:
+          command: "iso8583tool convert message.bin --encoding auto --spec spec87bcd-starter"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: default encoding detects a raw packed-BCD capture
+    steps:
+      - fixture:
+          file: message.bin
+          base64: AQBwBAAAAAAAABBAGSSZmZmZmTJzJwAAAAAROCIE
+      - run:
+          command: "iso8583tool convert message.bin --spec spec87bcd-starter"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  # --- Cross-platform round-trips via files ---------------------------------
+  - name: round-trip 0100 through sample -> hex -> json -> hex files
+    steps:
+      - run:
+          command: "iso8583tool sample 0100-auth-request --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output c.hex"
+      - assert:
+          exit_code: 0
+          file:
+            path: c.hex
+            exists: true
+      - assert:
+          file:
+            path: a.hex
+            exists: true
+      - assert:
+          file:
+            path: b.json
+            contains: '"mti": "0100"'
+
+  - name: round-trip 0800 through sample -> hex -> json -> hex files
+    steps:
+      - run:
+          command: "iso8583tool sample 0800-network-echo --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output c.hex"
+      - assert:
+          exit_code: 0
+          file:
+            path: c.hex
+            exists: true
+      - assert:
+          file:
+            path: b.json
+            contains: '"mti": "0800"'
+
+  - name: round-trip 0210 through sample -> hex -> json -> hex files
+    steps:
+      - run:
+          command: "iso8583tool sample 0210-financial-response --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output c.hex"
+      - assert:
+          exit_code: 0
+          file:
+            path: c.hex
+            exists: true
+      - assert:
+          file:
+            path: b.json
+            contains: '"mti": "0210"'
+
+  - name: round-trip 0100 is byte-equal (cmp)
+    skip: { os: windows }
+    steps:
+      - run:
+          command: "iso8583tool sample 0100-auth-request --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output c.hex"
+      - run:
+          shell: true
+          command: "cmp -s a.hex c.hex && echo SAME"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "SAME"
+
+  - name: round-trip 0800 is byte-equal (cmp)
+    skip: { os: windows }
+    steps:
+      - run:
+          command: "iso8583tool sample 0800-network-echo --format hex --output a.hex"
+      - run:
+          command: "iso8583tool convert a.hex --output b.json"
+      - run:
+          command: "iso8583tool convert b.json --to hex --output c.hex"
+      - run:
+          shell: true
+          command: "cmp -s a.hex c.hex && echo SAME"
+      - assert:
+          exit_code: 0
+          stdout:
+            equals: "SAME"
+
+  # --- Unpack-failure friendly error ----------------------------------------
+  - name: unpack failure reports a field-aware error, not moov internals
+    steps:
+      - run:
+          command: "iso8583tool convert --to json --raw FFFFFFFFFFFFFFFF"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+      - assert:
+          stderr:
+            not_contains: "failed to decode content"
+
+  - name: auto-detected unpack failure also reports a field-aware error
+    steps:
+      - run:
+          command: "iso8583tool convert --raw FFFFFFFFFFFFFFFF"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+
+  # --- sample surface -------------------------------------------------------
+  - name: sample with no argument lists every built-in sample
+    steps:
+      - run:
+          command: iso8583tool sample
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Available samples:"
+              - "0100-auth-request"
+              - "0110-auth-response"
+              - "0200-financial-request"
+              - "0210-financial-response"
+              - "0420-reversal-advice"
+              - "0430-reversal-response"
+              - "0800-network-echo"
+              - "0810-network-echo-response"
+
+  - name: sample 0100-auth-request --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0100-auth-request --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: sample 0110-auth-response --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0110-auth-response --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  - name: sample 0200-financial-request --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0200-financial-request --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0200"'
+
+  - name: sample 0210-financial-response --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0210-financial-response --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0210"'
+
+  - name: sample 0420-reversal-advice --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0420-reversal-advice --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0420"'
+
+  - name: sample 0430-reversal-response --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0430-reversal-response --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0430"'
+
+  - name: sample 0800-network-echo --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0800-network-echo --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: sample 0810-network-echo-response --format json has an mti
+    steps:
+      - run:
+          command: iso8583tool sample 0810-network-echo-response --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0810"'
+
+  - name: sample 0100-auth-request --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0100-auth-request --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0110-auth-response --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0110-auth-response --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0200-financial-request --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0200-financial-request --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0210-financial-response --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0210-financial-response --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0420-reversal-advice --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0420-reversal-advice --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0430-reversal-response --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0430-reversal-response --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0800-network-echo --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0800-network-echo --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample 0810-network-echo-response --format hex is uppercase hex
+    steps:
+      - run:
+          command: iso8583tool sample 0810-network-echo-response --format hex
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "^[0-9A-F\\s]+$"
+
+  - name: sample rejects an unsupported format
+    steps:
+      - run:
+          command: iso8583tool sample 0100-auth-request --format bogus
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported sample format"
+
+  - name: sample rejects an unknown name
+    steps:
+      - run:
+          command: iso8583tool sample nope
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unknown sample"
+
+  - name: sample --output writes the exported sample to a file
+    steps:
+      - run:
+          command: iso8583tool sample 0100-auth-request --format hex --output sample.hex
+      - assert:
+          exit_code: 0
+          changes:
+            created: [sample.hex]
+          file:
+            path: sample.hex
+            exists: true
+          stdout:
+            contains: "Wrote sample"
+
+  # --- specs surface --------------------------------------------------------
+  - name: specs text lists every preset with the default marked
+    steps:
+      - run:
+          command: iso8583tool specs
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "basei-starter (default)"
+              - "spec87ascii"
+              - "spec87bcd-starter"
+              - "(default)"
+
+  - name: specs --format json exposes the default preset first
+    steps:
+      - run:
+          command: iso8583tool specs --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$[0].name"
+              equals: "basei-starter"
+
+  - name: specs --format json marks the first preset as default
+    steps:
+      - run:
+          command: iso8583tool specs --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$[0].default"
+              equals: true
+
+  - name: specs --format json carries all three presets
+    steps:
+      - run:
+          command: iso8583tool specs --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$[2].name"
+              equals: "spec87bcd-starter"
+
+  - name: specs rejects an unexpected positional argument
+    steps:
+      - run:
+          command: iso8583tool specs extra
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "Usage:"

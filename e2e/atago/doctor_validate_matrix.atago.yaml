@@ -1,0 +1,1101 @@
+# Deep atago E2E matrix for the `doctor` and `validate` surfaces.
+#
+# This suite complements doctor.atago.yaml, diagnostics.atago.yaml,
+# validate.atago.yaml, strict_validate.atago.yaml and autodetect.atago.yaml by
+# adding NEW angles: doctor's recommend/Candidates/Confirm contract on every
+# bundled sample, its JSON report (candidates array, recommended field,
+# ambiguity), the hex-vs-raw encoding note, the "--" quoting of a dash-prefixed
+# filename in the Confirm line; and validate's exit-code branch, its friendly
+# broken-message Hint, the exact per-MTI strict issue wordings (verified by
+# running the binary), the unknown-TLV warning, the JSON valid/issues shape, the
+# Extension Field Strategy section, and the stderr error paths.
+#
+# Env (exported by run.sh): ISO_EXAMPLES (absolute path to examples/).
+# Run with: make e2e   (or e2e/run.sh)
+version: "1"
+
+suite:
+  name: iso8583tool doctor and validate matrix
+
+scenarios:
+  # ---------------------------------------------------------------------------
+  # doctor: recommend + Candidates + Confirm on each bundled BASE I sample.
+  # A good message always exits 0 and names a single best-fit preset.
+  # ---------------------------------------------------------------------------
+  - name: doctor recommends basei-starter for the 0100 authorization request
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "Candidates:"
+              - "Confirm with: iso8583tool view --spec basei-starter"
+
+  - name: doctor reports the hex byte count and the exact-round-trip fit for 0100
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Doctor: inspected 385 bytes (hex input)"
+              - "MTI 0100, 21 fields, exact byte-length round trip"
+
+  - name: doctor prints the full confirm path for the 0100 request
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "iso8583tool view --spec basei-starter ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+
+  - name: doctor marks the non-fitting presets "no" with a cannot-unpack reason for 0100
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "spec87ascii        no"
+              - "cannot unpack field 55"
+
+  - name: doctor recommends basei-starter for the 0110 authorization response
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "MTI 0110, 16 fields, exact byte-length round trip"
+
+  - name: doctor recommends basei-starter for the 0200 financial request
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "MTI 0200"
+
+  - name: doctor recommends basei-starter for the 0210 financial response
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "MTI 0210"
+
+  - name: doctor recommends basei-starter for the 0420 reversal advice
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "MTI 0420"
+
+  - name: doctor recommends basei-starter for the 0430 reversal response
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter"
+              - "MTI 0430"
+
+  # ---------------------------------------------------------------------------
+  # doctor: ambiguity. A message without field 55 fits basei-starter and
+  # spec87ascii equally well; both are recommended and both must be confirmed.
+  # ---------------------------------------------------------------------------
+  - name: doctor flags the 0800 network echo as fitting more than one preset
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter or --spec spec87ascii"
+              - "more than one preset fits equally well"
+
+  - name: doctor confirms the ambiguous 0800 with each tied preset separately
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Confirm with:"
+              - "iso8583tool view --spec basei-starter"
+              - "iso8583tool view --spec spec87ascii"
+
+  - name: doctor explains the 0800 tie hinges on field 55 EMV modeling
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 55"
+              - "EMV"
+
+  - name: doctor flags the 0810 network echo response as ambiguous too
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Recommended: --spec basei-starter or --spec spec87ascii"
+              - "more than one preset fits equally well"
+
+  - name: doctor lists both tied presets as recommended for the spec87ascii 0800
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "basei-starter"
+              - "spec87ascii"
+              - "recommended"
+
+  # ---------------------------------------------------------------------------
+  # doctor: JSON report. Assert the machine-readable shape a script consumes.
+  # ---------------------------------------------------------------------------
+  - name: doctor JSON names basei-starter as the recommended preset for 0100
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.recommended"
+              equals: "basei-starter"
+
+  - name: doctor JSON exposes a candidates array whose first entry is basei-starter
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.candidates[0].preset"
+              equals: "basei-starter"
+
+  - name: doctor JSON reports the exact_round_trip flag on the winning candidate
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.candidates[0].exact_round_trip"
+              equals: true
+
+  - name: doctor JSON marks a single-fit message as not ambiguous
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.ambiguous"
+              equals: false
+
+  - name: doctor JSON carries the candidates and field_count keys
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"candidates"'
+              - '"field_count"'
+              - '"recommended"'
+
+  - name: doctor JSON marks the field-55-free 0800 as ambiguous
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.ambiguous"
+              equals: true
+
+  - name: doctor JSON lists spec87ascii as the second tied recommendation for 0800
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.recommendations[1]"
+              equals: "spec87ascii"
+
+  - name: doctor JSON reports the winning candidate as unpacking for 0110
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.candidates[0].unpacks"
+              equals: true
+
+  # ---------------------------------------------------------------------------
+  # doctor: no-fit / malformed. The actionable failure exits non-zero so a
+  # script can branch on it.
+  # ---------------------------------------------------------------------------
+  - name: doctor exits 1 and says no built-in preset fits an all-FF message
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "No built-in preset could unpack this message."
+
+  - name: doctor marks every candidate "no" for the all-FF message
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "cannot unpack field 0"
+
+  - name: doctor JSON reports the all-FF winning candidate as not unpacking
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw FFFFFFFFFFFFFFFF --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              path: "$.candidates[0].unpacks"
+              equals: false
+
+  - name: doctor calls a truncated capture malformed rather than a custom layout
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw 3031303030303030303030 --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "This message appears truncated or malformed."
+
+  - name: doctor JSON sets likely_malformed on a truncated capture
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw 3031303030303030303030 --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              path: "$.likely_malformed"
+              equals: true
+
+  # ---------------------------------------------------------------------------
+  # doctor: encoding auto-detect and the "(<enc> input)" note.
+  # ---------------------------------------------------------------------------
+  - name: doctor reads a raw .bin with --encoding raw and notes the raw input
+    steps:
+      - fixture: &raw_bin
+          file: raw.bin
+          base64: AQBwBAAAAAAAABBAGSSZmZmZmTJzJwAAAAAROCIE
+      - run:
+          command: "iso8583tool doctor raw.bin --encoding raw --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "(raw input)"
+              - "Recommended: --spec spec87bcd-starter"
+
+  - name: doctor's raw confirm line carries the --encoding raw flag
+    steps:
+      - fixture: *raw_bin
+      - run:
+          command: "iso8583tool doctor raw.bin --encoding raw --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "iso8583tool view --spec spec87bcd-starter --encoding raw raw.bin"
+
+  - name: doctor auto-detects a raw .bin without an explicit --encoding
+    steps:
+      - fixture: *raw_bin
+      - run:
+          command: "iso8583tool doctor raw.bin --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "(raw input)"
+              - "Recommended: --spec spec87bcd-starter"
+
+  - name: doctor notes a hex-text capture as hex input
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "(hex input)"
+
+  - name: doctor recommends the starter for a sample exported to a hex file
+    steps:
+      - run:
+          command: "iso8583tool sample 0200-financial-request --format hex --output s.hex"
+      - run:
+          command: "iso8583tool doctor s.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Recommended: --spec basei-starter"
+
+  # ---------------------------------------------------------------------------
+  # doctor: a dash-prefixed filename must be quoted behind "--" in the confirm
+  # line so a copy-paste is not re-parsed as options.
+  # ---------------------------------------------------------------------------
+  - name: doctor confirm line places a dash-prefixed filename after a -- separator
+    steps:
+      - fixture:
+          file: "-weird.hex"
+          content: "303131303732333830303030304543313832303230303030303030303030303030303030313634313131313131313131313131313131303030303030303030303030303035303030303630343132333435363132333435363132333435373036303452454631323334353637383941313233343530305445524D494430314D45524348414E5430303030303031303231415050524F5645443D597C42414C414E43453D4E4133393230323771061122334455667203AABBCC8A0230309108A1B2C3D4E5F607083031354E4554574F524B54524143453D4F4B"
+      - run:
+          command: "iso8583tool doctor --no-color -- -weird.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "iso8583tool view --spec basei-starter -- -weird.hex"
+
+  - name: doctor still recommends the starter for a dash-prefixed filename
+    steps:
+      - fixture:
+          file: "-weird.hex"
+          content: "303131303732333830303030304543313832303230303030303030303030303030303030313634313131313131313131313131313131303030303030303030303030303035303030303630343132333435363132333435363132333435373036303452454631323334353637383941313233343530305445524D494430314D45524348414E5430303030303031303231415050524F5645443D597C42414C414E43453D4E4133393230323771061122334455667203AABBCC8A0230309108A1B2C3D4E5F607083031354E4554574F524B54524143453D4F4B"
+      - run:
+          command: "iso8583tool doctor --no-color -- -weird.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Recommended: --spec basei-starter"
+
+  # ---------------------------------------------------------------------------
+  # doctor: the exit-code contract a wrapper script branches on.
+  # ---------------------------------------------------------------------------
+  - name: doctor exits 0 on a recognizable message so a script sees success
+    steps:
+      - run:
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+
+  - name: doctor exits 1 on a no-fit message so a script sees failure
+    steps:
+      - run:
+          command: "iso8583tool doctor --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+
+  # ---------------------------------------------------------------------------
+  # validate: a real message reports ok and echoes the MTI/summary.
+  # ---------------------------------------------------------------------------
+  - name: validate passes the 0100 request and shows its summary
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0100"
+              - "Summary:"
+
+  - name: validate passes the 0200 financial request
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0200"
+
+  - name: validate passes the 0210 financial response and shows Approved
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "Approved"
+
+  - name: validate passes the 0420 reversal advice
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0420"
+
+  - name: validate passes the 0430 reversal response
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0430"
+
+  - name: validate passes the 0800 network echo
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0800"
+
+  - name: validate passes the 0810 network echo response
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "MTI: 0810"
+
+  - name: validate passes the spec87ascii 0800 under its own preset
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --spec spec87ascii --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Validation: ok"
+
+  - name: validate echoes the requested basei-starter preset in the Spec line
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --spec basei-starter --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Spec: basei-starter"
+
+  # ---------------------------------------------------------------------------
+  # validate: broken input is friendly (a Hint, never "failed to decode content").
+  # ---------------------------------------------------------------------------
+  - name: validate fails an all-FF message with an error and a hint
+    steps:
+      - run:
+          command: "iso8583tool validate --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains:
+              - "Validation: failed"
+              - "[error]"
+              - "Hint:"
+
+  - name: validate does not leak the internal decode-content wording on a broken message
+    steps:
+      - run:
+          command: "iso8583tool validate --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            not_contains: "failed to decode content"
+
+  - name: validate flags a too-short capture as truncated or malformed
+    steps:
+      - run:
+          command: "iso8583tool validate --raw 01007220 --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains:
+              - "Validation: failed"
+              - "truncated or malformed"
+
+  - name: validate JSON reports valid false on a broken message
+    steps:
+      - run:
+          command: "iso8583tool validate --raw FFFFFFFFFFFFFFFF --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              path: "$.valid"
+              equals: false
+
+  - name: validate JSON carries a hint on a broken message
+    steps:
+      - run:
+          command: "iso8583tool validate --raw FFFFFFFFFFFFFFFF --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: '"hint"'
+
+  # ---------------------------------------------------------------------------
+  # validate --strict: exact per-MTI required/recommended field wordings.
+  # Each input is packed from a fixture JSON to a hex file, then validated.
+  # ---------------------------------------------------------------------------
+  - name: strict flags a hollow 0100 request for the missing processing code
+    steps:
+      - fixture:
+          file: s0100.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0100.json --to hex --output s0100.hex"
+      - run:
+          command: "iso8583tool validate s0100.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains:
+              - "Validation: failed"
+              - "strict: required for an authorization/financial request (processing code)"
+
+  - name: strict flags a hollow 0100 request for the missing PAN source
+    steps:
+      - fixture:
+          file: s0100b.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0100b.json --to hex --output s0100b.hex"
+      - run:
+          command: "iso8583tool validate s0100b.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "needs a PAN source (field 2, 35, or 45)"
+
+  - name: strict flags a hollow 0100 request for the missing amount
+    steps:
+      - fixture:
+          file: s0100c.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0100c.json --to hex --output s0100c.hex"
+      - run:
+          command: "iso8583tool validate s0100c.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for an authorization/financial request (amount)"
+
+  - name: strict warns a hollow 0100 request lacks the retrieval reference number
+    steps:
+      - fixture:
+          file: s0100d.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0100d.json --to hex --output s0100d.hex"
+      - run:
+          command: "iso8583tool validate s0100d.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: recommended for card messages (retrieval reference number)"
+
+  - name: strict flags a hollow 0110 response for the missing response code
+    steps:
+      - fixture:
+          file: s0110.json
+          content: '{"mti":"0110","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0110.json --to hex --output s0110.hex"
+      - run:
+          command: "iso8583tool validate s0110.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for an authorization/financial response (response code)"
+
+  - name: strict flags a hollow 0200 request for the missing processing code
+    steps:
+      - fixture:
+          file: s0200.json
+          content: '{"mti":"0200","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0200.json --to hex --output s0200.hex"
+      - run:
+          command: "iso8583tool validate s0200.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for an authorization/financial request (processing code)"
+
+  - name: strict flags a hollow 0210 response for the missing response code
+    steps:
+      - fixture:
+          file: s0210.json
+          content: '{"mti":"0210","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0210.json --to hex --output s0210.hex"
+      - run:
+          command: "iso8583tool validate s0210.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for an authorization/financial response (response code)"
+
+  - name: strict flags a hollow 0300 file-action request for the missing file name
+    steps:
+      - fixture:
+          file: s0300.json
+          content: '{"mti":"0300","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0300.json --to hex --output s0300.hex"
+      - run:
+          command: "iso8583tool validate s0300.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for a file-action request (file name)"
+
+  - name: strict flags a hollow 0310 file-action response for the missing action code
+    steps:
+      - fixture:
+          file: s0310.json
+          content: '{"mti":"0310","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0310.json --to hex --output s0310.hex"
+      - run:
+          command: "iso8583tool validate s0310.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for a file-action response (action code)"
+
+  - name: strict flags a hollow 0400 reversal for the missing original data elements
+    steps:
+      - fixture:
+          file: s0400.json
+          content: '{"mti":"0400","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0400.json --to hex --output s0400.hex"
+      - run:
+          command: "iso8583tool validate s0400.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for a reversal request (original data elements)"
+
+  - name: strict flags a 0400 reversal with an amount but no PAN source
+    steps:
+      - fixture:
+          file: s0400b.json
+          content: '{"mti":"0400","fields":{"4":"000000001000","7":"0605123456","11":"123456","90":"020022334406041301050000000000000000000000"}}'
+      - run:
+          command: "iso8583tool convert s0400b.json --to hex --output s0400b.hex"
+      - run:
+          command: "iso8583tool validate s0400b.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: a reversal request needs a PAN source (field 2, 35, or 45)"
+
+  - name: strict flags a hollow 0800 network message for the missing management code
+    steps:
+      - fixture:
+          file: s0800.json
+          content: '{"mti":"0800","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert s0800.json --to hex --output s0800.hex"
+      - run:
+          command: "iso8583tool validate s0800.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for a network-management message (network management code)"
+
+  - name: strict flags a hollow 0810 network response for the missing response code
+    steps:
+      - fixture:
+          file: s0810.json
+          content: '{"mti":"0810","fields":{"11":"123456","70":"301"}}'
+      - run:
+          command: "iso8583tool convert s0810.json --to hex --output s0810.hex"
+      - run:
+          command: "iso8583tool validate s0810.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for a network-management response (response code)"
+
+  - name: strict requires field 11 on every BASE I message
+    steps:
+      - fixture:
+          file: s11.json
+          content: '{"mti":"0100","fields":{"2":"4111111111111111","3":"000000","4":"000000005000","7":"0604123456"}}'
+      - run:
+          command: "iso8583tool convert s11.json --to hex --output s11.hex"
+      - run:
+          command: "iso8583tool validate s11.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: required for every BASE I message"
+
+  # ---------------------------------------------------------------------------
+  # validate --strict: complete messages pass, and warnings alone stay green.
+  # ---------------------------------------------------------------------------
+  - name: strict accepts a complete 0100 request
+    steps:
+      - fixture:
+          file: c0100.json
+          content: '{"mti":"0100","fields":{"2":"4111111111111111","3":"000000","4":"000000005000","7":"0604123456","11":"123456","37":"REF123456789"}}'
+      - run:
+          command: "iso8583tool convert c0100.json --to hex --output c0100.hex"
+      - run:
+          command: "iso8583tool validate c0100.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Validation: ok"
+
+  - name: strict accepts a complete 0110 response
+    steps:
+      - fixture:
+          file: c0110.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","37":"REF123456789","38":"AUTH01"}}'
+      - run:
+          command: "iso8583tool convert c0110.json --to hex --output c0110.hex"
+      - run:
+          command: "iso8583tool validate c0110.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Validation: ok"
+
+  - name: strict passes but warns an approved 0110 lacking the authorization id
+    steps:
+      - fixture:
+          file: w0110.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","37":"REF123456789"}}'
+      - run:
+          command: "iso8583tool convert w0110.json --to hex --output w0110.hex"
+      - run:
+          command: "iso8583tool validate w0110.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Validation: ok"
+              - "an approved response (field 39=00) usually carries an authorization identification (field 38)"
+
+  - name: strict still validates the bundled 0110 sample as complete
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Validation: ok"
+
+  # ---------------------------------------------------------------------------
+  # validate --strict: MTI validity and numeric-field checks surfaced by strict.
+  # ---------------------------------------------------------------------------
+  - name: strict flags a message whose MTI is not numeric
+    steps:
+      - run:
+          command: "iso8583tool validate --raw 30383041303233383031303030303831303030303034303030303030303030303030303030363034313631363136363534333231313631363136303630343030315445524D4E4554313031354845415254424541543D4241534549333031 --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: MTI must be numeric"
+
+  - name: non-strict validation does not apply the MTI-numeric rule
+    steps:
+      - run:
+          command: "iso8583tool validate --raw 30383041303233383031303030303831303030303034303030303030303030303030303030363034313631363136363534333231313631363136303630343030315445524D4E4554313031354845415254424541543D4241534549333031 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "strict: MTI must be numeric"
+
+  - name: strict rejects an alphabetic value in the numeric field 12
+    steps:
+      - fixture:
+          file: n12.json
+          content: '{"mti":"0800","fields":{"11":"123456","70":"301","12":"ABCDEF"}}'
+      - run:
+          command: "iso8583tool convert n12.json --to hex --output n12.hex"
+      - run:
+          command: "iso8583tool validate n12.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: field 12 must be numeric (digits only)"
+
+  - name: strict rejects an alphabetic value in the numeric field 13
+    steps:
+      - fixture:
+          file: n13.json
+          content: '{"mti":"0800","fields":{"11":"123456","70":"301","13":"ABCD"}}'
+      - run:
+          command: "iso8583tool convert n13.json --to hex --output n13.hex"
+      - run:
+          command: "iso8583tool validate n13.hex --strict --no-color"
+      - assert:
+          exit_code: 1
+          stdout:
+            contains: "strict: field 13 must be numeric (digits only)"
+
+  # ---------------------------------------------------------------------------
+  # validate --strict: recognized-but-unmodeled MTI classes warn (still green).
+  # ---------------------------------------------------------------------------
+  - name: strict warns that administrative class 6 rules are not implemented
+    steps:
+      - fixture:
+          file: cls6.json
+          content: '{"mti":"0600","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert cls6.json --to hex --output cls6.hex"
+      - run:
+          command: "iso8583tool validate cls6.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI class 6 (administrative) are not implemented"
+
+  - name: strict warns that fee-collection class 7 rules are not implemented
+    steps:
+      - fixture:
+          file: cls7.json
+          content: '{"mti":"0700","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert cls7.json --to hex --output cls7.hex"
+      - run:
+          command: "iso8583tool validate cls7.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI class 7 (fee collection) are not implemented"
+
+  - name: strict warns on an unrecognized MTI class
+    steps:
+      - fixture:
+          file: cls9.json
+          content: '{"mti":"0900","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert cls9.json --to hex --output cls9.hex"
+      - run:
+          command: "iso8583tool validate cls9.hex --strict --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "strict: unrecognized MTI class 9"
+
+  # ---------------------------------------------------------------------------
+  # validate: JSON report shape.
+  # ---------------------------------------------------------------------------
+  - name: validate JSON reports valid true for a good message
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.valid"
+              equals: true
+
+  - name: validate JSON carries a summary for a good message
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"summary"'
+              - '"mti"'
+
+  - name: validate JSON keeps a warning-only message valid
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json:
+              path: "$.valid"
+              equals: true
+
+  - name: validate JSON reports the first strict issue severity as error
+    steps:
+      - fixture:
+          file: j0800.json
+          content: '{"mti":"0800","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert j0800.json --to hex --output j0800.hex"
+      - run:
+          command: "iso8583tool validate j0800.hex --strict --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              path: "$.issues[0].severity"
+              equals: "error"
+
+  - name: validate JSON marks a hollow strict message as invalid
+    steps:
+      - fixture:
+          file: j0800b.json
+          content: '{"mti":"0800","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert j0800b.json --to hex --output j0800b.hex"
+      - run:
+          command: "iso8583tool validate j0800b.hex --strict --format json"
+      - assert:
+          exit_code: 1
+          stdout:
+            json:
+              path: "$.valid"
+              equals: false
+
+  # ---------------------------------------------------------------------------
+  # validate: unknown TLV tags warn but never fail.
+  # ---------------------------------------------------------------------------
+  - name: validate reports an unknown TLV tag as a warning and still exits 0
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "warning"
+              - "55.DF8129"
+
+  - name: validate lists the unknown TLV under its own section
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Unknown TLV Tags:"
+
+  - name: validate masks the bytes of an unknown TLV tag
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "55.DF8129: ********"
+
+  # ---------------------------------------------------------------------------
+  # validate: the Extension Field Strategy section for private/EMV fields.
+  # ---------------------------------------------------------------------------
+  - name: validate documents the EMV field 55 as a TLV extension strategy
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Extension Field Strategy:"
+              - "F55 ICC System Related Data [tlv]"
+
+  - name: validate documents the private field 48 as an opaque extension strategy
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F48 Additional Data - Private [opaque]"
+
+  - name: validate documents the reserved private field 63 as opaque on the 0210 response
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F63 Reserved Private [opaque]"
+
+  # ---------------------------------------------------------------------------
+  # validate: error paths on stderr.
+  # ---------------------------------------------------------------------------
+  - name: validate rejects an unknown preset and points at the specs command
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --spec basei-startr --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "unknown spec"
+              - "iso8583tool specs"
+
+  - name: validate reports a missing JSON spec file
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --spec /nope/spec.json --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "spec file not found"
+
+  - name: validate rejects an unsupported output format
+    steps:
+      - run:
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format yaml --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported format"
