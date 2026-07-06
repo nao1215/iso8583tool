@@ -11,38 +11,56 @@ suite:
 
 scenarios:
   - name: streams sample -> convert -> view
+    # Shell-free equivalent of `sample | convert | convert | view -`: each stage
+    # writes its stdout to a workdir file that the next stage reads positionally.
     steps:
       - run:
-          shell: true
-          command: "iso8583tool sample 0100-auth-request --format hex | iso8583tool convert | iso8583tool convert | iso8583tool view -"
+          command: "iso8583tool sample 0100-auth-request --format hex"
+          stdout_to: s1.hex
+      - run:
+          command: "iso8583tool convert s1.hex"
+          stdout_to: s2.json
+      - run:
+          command: "iso8583tool convert s2.json"
+          stdout_to: s3.hex
+      - run:
+          command: "iso8583tool view s3.hex"
       - assert:
           exit_code: 0
           stdout:
             contains: "MTI"
 
   - name: editing an EMV tag edits one tag and packs it back
+    # The ShellSpec original converts 0100-auth-request.hex to JSON and seds tag
+    # 55.9F02 from 000000005000 to 000000010000. Here edited.json is that exact
+    # convert output with only 55.9F02 changed, so the shell-free
+    # convert -> view --filter chain asserts the edited tag packs back.
     steps:
+      - fixture:
+          file: edited.json
+          content: '{"mti":"0100","fields":{"11":"123456","12":"123456","13":"0604","14":"2912","18":"5999","2":"4111111111111111","22":"051","23":"001","24":"200","25":"00","3":"000000","35":"4111111111111111D29122011234567890","37":"REF123456789","4":"000000005000","41":"TERMID01","42":"MERCHANT0000001","48":"LOYALTY=OFF|INSTALLMENT=00","49":"392","62":"ORDERID=000123|CHANNEL=ECOM","7":"0604123456"},"binary_fields":{"55.5F2A":"0392","55.82":"3900","55.84":"A0000000031010","55.95":"8000008000","55.9A":"260604","55.9C":"00","55.9F02":"000000010000","55.9F03":"000000000000","55.9F09":"008C","55.9F10":"06011203A0B0C0","55.9F1A":"0392","55.9F1E":"5445535431323334","55.9F26":"1122334455667788","55.9F27":"80","55.9F33":"E0F8C8","55.9F34":"1F0302","55.9F35":"22","55.9F36":"0034","55.9F37":"11223344","55.9F41":"00000001"}}'
       - run:
-          shell: true
-          command: |
-            iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request.hex > msg.json
-            sed 's/"55.9F02": "000000005000"/"55.9F02": "000000010000"/' msg.json > edited.json
+          command: "iso8583tool convert edited.json"
+          stdout_to: edited.hex
       - run:
-          shell: true
-          command: "iso8583tool convert edited.json | iso8583tool view - --filter 55.9F02"
+          command: "iso8583tool view edited.hex --filter 55.9F02"
       - assert:
           exit_code: 0
           stdout:
             contains: "000000010000"
 
   - name: editing an EMV tag keeps an unknown tag through the round trip
+    # Shell-free equivalent of `convert unknown-tlv.hex > u.json` then
+    # `convert u.json | validate -`: each stage's stdout goes to a workdir file.
     steps:
       - run:
-          shell: true
-          command: "iso8583tool convert $ISO_EXAMPLES/basei/0100-auth-request-unknown-tlv.hex > u.json"
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex"
+          stdout_to: u.json
       - run:
-          shell: true
-          command: "iso8583tool convert u.json | iso8583tool validate -"
+          command: "iso8583tool convert u.json"
+          stdout_to: u.hex
+      - run:
+          command: "iso8583tool validate u.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -51,8 +69,7 @@ scenarios:
   - name: extracts a single field value with --filter
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 39"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 39"
       - assert:
           exit_code: 0
           stdout:

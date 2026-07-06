@@ -1,27 +1,24 @@
 # Migrated from iso8583tool's ShellSpec spec/ergonomics_spec.sh.
 # Everyday ergonomics: flags before or after the positional target, repeated
 # --filter, color modes (auto/always/never/--no-color), end-of-options, and
-# config selection. The ShellSpec ANSI checks compare against a literal ESC
-# byte ($(printf '\033')); here the command is piped through `cat -v` so ESC
-# renders as the literal text "^[", which atago matches as a substring.
-# Run with: make e2e   (or e2e/run.sh)
+# config selection. The ShellSpec ANSI checks compared against a literal ESC
+# byte ($(printf '\033')) after piping through `cat -v`; here atago captures
+# stdout via a pipe (a non-tty), so the tool is run directly and the assertions
+# match the raw ESC byte written as "\x1b". Run with: make e2e   (or e2e/run.sh)
 version: "1"
 
 suite:
   name: iso8583tool ergonomics
 
-# Every command here needs the shell (env vars like $ISO_EXAMPLES, pipes into
-# `cat -v`, redirects), so default shell:true once instead of on every run step
-# (ADR-0039). A step can still add its own runner/cwd/timeout/env/stdin.
-defaults:
-  run:
-    shell: true
-
+# Host paths come from ${env:ISO_EXAMPLES} (atago expands it before any runner),
+# so plain tool invocations run without a shell and stay cross-platform. The
+# color and dash-filename scenarios are shell-free too: color is checked on the
+# raw captured output, and the dash-leading file is a workdir fixture.
 scenarios:
   - name: flag ordering - accepts the target after the flags
     steps:
       - run:
-          command: "iso8583tool view --format json $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool view --format json ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -30,7 +27,7 @@ scenarios:
   - name: flag ordering - accepts the target before the flags
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -39,7 +36,7 @@ scenarios:
   - name: flag ordering - accepts flags interleaved around the target
     steps:
       - run:
-          command: "iso8583tool view --filter 39 $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 49"
+          command: "iso8583tool view --filter 39 ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 49"
       - assert:
           exit_code: 0
           stdout:
@@ -49,45 +46,50 @@ scenarios:
 
   - name: color - is plain by default when not on a terminal
     # When captured (not a tty) auto stays off, so a plain run has no escapes.
+    # atago captures stdout via a pipe, so the tool sees a non-tty directly; we
+    # assert on the raw ESC byte (\x1b) instead of shelling out to `cat -v`.
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex | cat -v"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
-            not_contains: "^["
+            not_contains: "\x1b["
 
   - name: color - forces color with --color always
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --color always | cat -v"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color always"
       - assert:
           exit_code: 0
           stdout:
-            contains: "^["
+            contains: "\x1b["
 
   - name: color - stays plain with --no-color even when forced elsewhere
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --no-color | cat -v"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color"
       - assert:
           exit_code: 0
           stdout:
-            not_contains: "^["
+            not_contains: "\x1b["
 
   - name: color - rejects an unknown --color value instead of ignoring it
     steps:
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --color banana"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --color banana"
       - assert:
           exit_code: { not: 0 }
           stderr:
             contains: "invalid --color"
 
   - name: end of options - treats a dash-leading filename after -- as a positional
+    # Instead of shelling out to `cp` to make a dash-leading file, materialize it
+    # as a workdir fixture copied from the example, then pass it after `--`.
     steps:
-      - run:
-          command: 'cp "$ISO_EXAMPLES/basei/0110-auth-response.hex" ./-response.hex'
+      - fixture:
+          file: -response.hex
+          from: ../../examples/basei/0110-auth-response.hex
       - run:
           command: "iso8583tool view -- -response.hex"
       - assert:
@@ -101,7 +103,7 @@ scenarios:
           file: cfg.json
           content: '{"spec":"basei-starter","extensions":[{"id":63,"name":"Acme Blob","strategy":"opaque"}]}'
       - run:
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex --config cfg.json"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --config cfg.json"
       - assert:
           exit_code: 0
           stdout:
@@ -113,7 +115,7 @@ scenarios:
           file: bad.json
           content: '{"extensions":[{"id":1,"strategy":"nope"}]}'
       - run:
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0110-auth-response.hex --config bad.json"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --config bad.json"
       - assert:
           exit_code: { not: 0 }
           stderr:

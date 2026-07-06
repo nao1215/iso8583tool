@@ -14,8 +14,7 @@ scenarios:
   - name: passes a good message with exit 0
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -26,8 +25,7 @@ scenarios:
   - name: reports unknown TLV tags as a warning but still exits 0
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0100-auth-request-unknown-tlv.hex"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex"
       - assert:
           exit_code: 0
           stdout:
@@ -51,8 +49,7 @@ scenarios:
   - name: emits a JSON report with --format json
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex --format json"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -63,8 +60,7 @@ scenarios:
   - name: accepts a complete sample under --strict
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0110-auth-response.hex --strict"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --strict"
       - assert:
           exit_code: 0
           stdout:
@@ -73,9 +69,13 @@ scenarios:
   - name: flags a hollow response under --strict
     steps:
       # A 0110 carrying only a STAN unpacks, but is not a well-formed response.
+      - fixture:
+          file: hollow.json
+          content: '{"mti":"0110","fields":{"11":"123456"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0110\",\"fields\":{\"11\":\"123456\"}}" | iso8583tool convert --to hex | iso8583tool validate - --strict'
+          command: "iso8583tool convert hollow.json --to hex --output hollow.hex"
+      - run:
+          command: "iso8583tool validate hollow.hex --strict"
       - assert:
           exit_code:
             not: 0
@@ -88,9 +88,13 @@ scenarios:
     steps:
       # A message whose only decoded entry is the MTI must not print an empty
       # "Decoded Fields:" section (the MTI is shown on its own line above).
+      - fixture:
+          file: mti0500.json
+          content: '{"mti":"0500","fields":{"11":"123456"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0500\",\"fields\":{\"11\":\"123456\"}}" | iso8583tool convert --to hex | iso8583tool validate - --strict'
+          command: "iso8583tool convert mti0500.json --to hex --output mti0500.hex"
+      - run:
+          command: "iso8583tool validate mti0500.hex --strict"
       - assert:
           exit_code: 0
           stdout:

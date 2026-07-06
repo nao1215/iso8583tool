@@ -92,8 +92,7 @@ scenarios:
   - name: still accepts the bundled network echo under --strict
     steps:
       - run:
-          shell: true
-          command: "iso8583tool validate $ISO_EXAMPLES/basei/0800-network-echo.hex --strict"
+          command: "iso8583tool validate ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --strict"
       - assert:
           exit_code: 0
           stdout:

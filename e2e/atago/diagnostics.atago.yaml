@@ -12,8 +12,7 @@ scenarios:
   - name: presents tied presets for an ambiguous message
     steps:
       - run:
-          shell: true
-          command: "iso8583tool doctor $ISO_EXAMPLES/spec87ascii/0800-network-echo.hex --no-color"
+          command: "iso8583tool doctor ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --no-color"
       - assert:
           exit_code: 0
           stdout:

@@ -1,0 +1,1397 @@
+# Deep behavioral matrix for the `redact` and `diff` surfaces of iso8583tool.
+#
+# These scenarios are intentionally NON-smoke: every one asserts a real contract
+# — a masking rule, an exit-code branch, a diff kind (changed/added/removed/MTI),
+# a filter semantics, a friendly unpack error, or a metamorphic/differential
+# property. They deliberately AVOID duplicating redact.atago.yaml,
+# masking.atago.yaml, masking_custom.atago.yaml, diff.atago.yaml and
+# sanitize_output.atago.yaml, and add fresh angles instead:
+#   * shell-free diff pair crafting via fixture JSON + `convert --to hex --output`
+#     (the existing diff spec builds pairs with a POSIX sed pipeline);
+#   * JSONPath assertions on redact/diff JSON output (no jq shell dependency);
+#   * every diff kind isolated, plus differential A/B vs B/A mirror checks;
+#   * round-trip idempotence: a redacted document re-packed and re-viewed stays
+#     non-sensitive;
+#   * unpack-failure friendliness ("cannot unpack field", never "failed to
+#     decode content") on both surfaces.
+#
+# Cross-platform: the diff pairs are built with `convert --output` and diffed as
+# positional file args, and one-side stdin uses `stdin: { file / base64: ... }`,
+# so no scenario needs a POSIX shell. Every scenario here runs on every OS —
+# there are no `skip: { os: windows }` markers.
+#
+# ISO_EXAMPLES points at examples/ (see e2e/run.sh). The 0100 sample PAN is
+# 4111111111111111 (masked form 411111******1111); its EMV cryptogram is
+# 55.9F26 and its track is F35 (4111111111111111D29122011234567890).
+#
+# The inline SMALL hex below is `{"mti":"0100","fields":{"2":"4111111111111111",
+# "11":"123456"}}` packed under basei-starter, used for --raw / inline-stdin
+# input paths without touching the filesystem.
+#
+# Run with: make e2e   (or e2e/run.sh)
+version: "1"
+
+suite:
+  name: iso8583tool redact & diff matrix
+
+scenarios:
+  # ----------------------------------------------------------------------------
+  # redact — JSON output (default) masking rules, via JSONPath (no jq)
+  # ----------------------------------------------------------------------------
+  - name: redact json masks the PAN field 2 to BIN and last four
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact json fully masks the EMV application cryptogram 9F26
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.binary_fields['55.9F26']", equals: "****************" }
+
+  - name: redact json masks the whole track in field 35 keeping only the BIN
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['35']", equals: "411111****************************" }
+
+  - name: redact json preserves the MTI unchanged
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.mti", equals: "0100" }
+
+  - name: redact json leaves a non-sensitive STAN field 11 untouched
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['11']", equals: "123456" }
+
+  - name: redact json output never leaks the raw PAN substring (property)
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact json output never leaks the track discretionary tail (property)
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "29122011234567890"
+
+  # ----------------------------------------------------------------------------
+  # redact — text output
+  # ----------------------------------------------------------------------------
+  - name: redact text shows the Redacted footer and the masked PAN
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Redacted:"
+              - "411111******1111"
+
+  - name: redact text lists the redacted paths in the footer
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Redacted: 2, 35, 55.9F26"
+
+  - name: redact text renders the masked PAN on its own field line
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F2 = 411111******1111"
+
+  - name: redact text never leaks the raw PAN
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact text starts with the MTI header line
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            line: 1
+            contains: "MTI: 0100"
+
+  - name: redact text on a message with no sensitive data omits the Redacted footer
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "Redacted:"
+      - assert:
+          stdout:
+            line: 1
+            contains: "MTI: 0800"
+
+  # ----------------------------------------------------------------------------
+  # redact — colorization contract
+  # ----------------------------------------------------------------------------
+  - name: redact text with color always emits an ANSI escape byte
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --color always"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "\x1b"
+
+  - name: redact text with color never emits no ANSI escape byte
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --color never"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "\x1b"
+
+  # ----------------------------------------------------------------------------
+  # redact — unsupported format & spec presets
+  # ----------------------------------------------------------------------------
+  - name: redact rejects an unsupported output format
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format xml"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported format"
+
+  - name: redact format is case-sensitive so JSON in caps is rejected
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format JSON"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported format"
+
+  - name: redact honors the explicit default basei-starter preset
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec basei-starter"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact reads a spec87ascii message under the spec87ascii preset
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --spec spec87ascii --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.mti", equals: "0800" }
+
+  - name: redact rejects an unknown spec preset with a discoverable hint
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec basei-startr"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "unknown spec"
+              - "iso8583tool specs"
+
+  - name: redact reports a missing JSON spec file distinctly from an unknown preset
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec /nope/spec.json"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "spec file not found"
+
+  # ----------------------------------------------------------------------------
+  # redact — masking across the request/response sample matrix
+  # ----------------------------------------------------------------------------
+  - name: redact masks the PAN in the 0110 authorization response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact never leaks the PAN in the 0110 response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact masks the PAN in the 0200 financial request
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact masks the cryptogram in the 0200 financial request
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.binary_fields['55.9F26']", equals: "****************" }
+
+  - name: redact never leaks the PAN in the 0200 request
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact never leaks the track tail in the 0200 request
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "29122011234567890"
+
+  - name: redact masks the PAN in the 0210 financial response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact never leaks the PAN in the 0210 response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact masks the PAN in the 0420 reversal advice
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F2 = 411111******1111"
+
+  - name: redact never leaks the track tail in the 0420 reversal advice
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "29122011234567890"
+
+  - name: redact masks the PAN in the 0430 reversal response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact never leaks the PAN in the 0430 response
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact passes a PAN-free network echo through with the MTI intact
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.mti", equals: "0810" }
+
+  # ----------------------------------------------------------------------------
+  # redact — input channels: positional file, inline --raw, inline stdin
+  # ----------------------------------------------------------------------------
+  - name: redact accepts a positional file argument
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.mti", equals: "0100" }
+
+  - name: redact accepts an inline --raw hex message
+    steps:
+      - run:
+          command: "iso8583tool redact --raw 303130303430323030303030303030303030303030303030303030303030303030303030313634313131313131313131313131313131313233343536 --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact --raw never leaks the raw PAN
+    steps:
+      - run:
+          command: "iso8583tool redact --raw 303130303430323030303030303030303030303030303030303030303030303030303030313634313131313131313131313131313131313233343536 --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redact reads a message from stdin given as dash
+    steps:
+      - run:
+          command: "iso8583tool redact - --format json"
+          stdin:
+            base64: "MzAzMTMwMzAzNDMwMzIzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzEzNjM0MzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMjMzMzQzNTM2"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact reads a message from stdin when the argument is omitted
+    steps:
+      - run:
+          command: "iso8583tool redact --format text --no-color"
+          stdin:
+            base64: "MzAzMTMwMzAzNDMwMzIzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzEzNjM0MzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMjMzMzQzNTM2"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F2 = 411111******1111"
+
+  - name: redact reads a fixture file via sandboxed stdin
+    steps:
+      - fixture:
+          file: msg.hex
+          content: "303130303430323030303030303030303030303030303030303030303030303030303030313634313131313131313131313131313131313233343536"
+      - run:
+          command: "iso8583tool redact - --format json"
+          stdin:
+            file: msg.hex
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact honors an explicit hex encoding on a hex file
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --encoding hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.fields['2']", equals: "411111******1111" }
+
+  - name: redact rejects a second positional argument with usage
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex extra.hex"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "Usage: iso8583tool redact"
+
+  # ----------------------------------------------------------------------------
+  # redact — unpack-failure friendliness (post-fix diagnostic)
+  # ----------------------------------------------------------------------------
+  - name: redact gives a friendly cannot-unpack error on garbage bytes
+    steps:
+      - run:
+          command: "iso8583tool redact --raw FFFFFFFFFFFFFFFF"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+
+  - name: redact never surfaces the raw decode-content error on garbage bytes
+    steps:
+      - run:
+          command: "iso8583tool redact --raw FFFFFFFFFFFFFFFF"
+      - assert:
+          exit_code: 1
+          stderr:
+            not_contains: "failed to decode content"
+
+  # ----------------------------------------------------------------------------
+  # redact — embedded PAN in a private free-form field (shell-free craft)
+  # ----------------------------------------------------------------------------
+  - name: redact masks a PAN embedded in the private field 63
+    steps:
+      - fixture:
+          file: p63.json
+          content: '{"mti":"0110","fields":{"11":"123456","39":"00","63":"PAN=4111111111111111"}}'
+      - run:
+          command: "iso8583tool convert p63.json --to hex --output p63.hex"
+      - run:
+          command: "iso8583tool redact p63.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  # ----------------------------------------------------------------------------
+  # redact — round-trip idempotence / safety
+  # A redacted 0210 document (no binary cardholder tags) is re-packed and
+  # re-viewed; the pipeline output must stay non-sensitive.
+  # ----------------------------------------------------------------------------
+  - name: a redacted document re-packed to hex holds no raw PAN
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --format json"
+          stdout_to: red.json
+      - run:
+          command: "iso8583tool convert red.json --to hex --output red.hex"
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: red.hex
+            exists: true
+      - assert:
+          file:
+            path: red.hex
+            not_contains: "4111111111111111"
+
+  - name: viewing a re-packed redacted document keeps the PAN masked
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --format json"
+          stdout_to: red.json
+      - run:
+          command: "iso8583tool convert red.json --to hex --output red.hex"
+      - run:
+          command: "iso8583tool view red.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "411111******1111"
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: redacting is deterministic so a captured output is stable
+    steps:
+      - run:
+          command: "iso8583tool redact ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+          stdout_to: r1.json
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: r1.json
+            contains: "411111******1111"
+      - assert:
+          file:
+            path: r1.json
+            not_contains: "4111111111111111"
+
+  # ============================================================================
+  # diff — no differences
+  # ============================================================================
+  - name: diff of a message against itself reports no differences
+    steps:
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "No differences."
+
+  - name: diff of the 0200 request against itself reports no differences
+    steps:
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "No differences."
+
+  - name: diff of identical crafted messages reports no differences
+    steps:
+      - fixture:
+          file: id.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - run:
+          command: "iso8583tool convert id.json --to hex --output id.hex"
+      - run:
+          command: "iso8583tool diff id.hex id.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "No differences."
+
+  - name: diff json of identical messages has an empty changes set
+    steps:
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"changes"'
+
+  # ============================================================================
+  # diff — the four change kinds, isolated on crafted pairs (shell-free)
+  # ============================================================================
+  - name: diff reports a changed field with both old and new values
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 4 changed"
+              - "- 000000005000"
+              - "+ 000000009999"
+
+  - name: diff json labels a changed field with kind changed
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].kind", equals: "changed" }
+
+  - name: diff json records the changed field path
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].path", equals: "4" }
+
+  - name: diff json carries the changed before value
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].after", equals: "000000009999" }
+
+  - name: diff reports an added field present only on the after side
+    steps:
+      - fixture:
+          file: aa.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - fixture:
+          file: ab.json
+          content: '{"mti":"0100","fields":{"11":"123456","42":"MERCHANT0000001"}}'
+      - run:
+          command: "iso8583tool convert aa.json --to hex --output aa.hex"
+      - run:
+          command: "iso8583tool convert ab.json --to hex --output ab.hex"
+      - run:
+          command: "iso8583tool diff aa.hex ab.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 42 added"
+              - "+ MERCHANT0000001"
+
+  - name: diff json labels an added field with kind added
+    steps:
+      - fixture:
+          file: aa.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - fixture:
+          file: ab.json
+          content: '{"mti":"0100","fields":{"11":"123456","42":"MERCHANT0000001"}}'
+      - run:
+          command: "iso8583tool convert aa.json --to hex --output aa.hex"
+      - run:
+          command: "iso8583tool convert ab.json --to hex --output ab.hex"
+      - run:
+          command: "iso8583tool diff aa.hex ab.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].kind", equals: "added" }
+
+  - name: diff reports a removed field present only on the before side
+    steps:
+      - fixture:
+          file: ra.json
+          content: '{"mti":"0100","fields":{"11":"123456","41":"TERMID01"}}'
+      - fixture:
+          file: rb.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert ra.json --to hex --output ra.hex"
+      - run:
+          command: "iso8583tool convert rb.json --to hex --output rb.hex"
+      - run:
+          command: "iso8583tool diff ra.hex rb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 41 removed"
+              - "- TERMID01"
+
+  - name: diff json labels a removed field with kind removed
+    steps:
+      - fixture:
+          file: ra.json
+          content: '{"mti":"0100","fields":{"11":"123456","41":"TERMID01"}}'
+      - fixture:
+          file: rb.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert ra.json --to hex --output ra.hex"
+      - run:
+          command: "iso8583tool convert rb.json --to hex --output rb.hex"
+      - run:
+          command: "iso8583tool diff ra.hex rb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].kind", equals: "removed" }
+
+  - name: diff labels an MTI change with the MTI heading not a Field heading
+    steps:
+      - fixture:
+          file: ma.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - fixture:
+          file: mb.json
+          content: '{"mti":"0110","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert ma.json --to hex --output ma.hex"
+      - run:
+          command: "iso8583tool convert mb.json --to hex --output mb.hex"
+      - run:
+          command: "iso8583tool diff ma.hex mb.hex --no-color --filter mti"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "MTI changed"
+              - "- 0100"
+              - "+ 0110"
+
+  - name: diff json records the MTI change under the mti path
+    steps:
+      - fixture:
+          file: ma.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - fixture:
+          file: mb.json
+          content: '{"mti":"0110","fields":{"11":"123456"}}'
+      - run:
+          command: "iso8583tool convert ma.json --to hex --output ma.hex"
+      - run:
+          command: "iso8583tool convert mb.json --to hex --output mb.hex"
+      - run:
+          command: "iso8583tool diff ma.hex mb.hex --format json --filter mti"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].path", equals: "mti" }
+
+  - name: diff reports every kind together in one comparison
+    steps:
+      - fixture:
+          file: xa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000","41":"TERMID01"}}'
+      - fixture:
+          file: xb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999","42":"MERCHANT0000001"}}'
+      - run:
+          command: "iso8583tool convert xa.json --to hex --output xa.hex"
+      - run:
+          command: "iso8583tool convert xb.json --to hex --output xb.hex"
+      - run:
+          command: "iso8583tool diff xa.hex xb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 4 changed"
+              - "Field 41 removed"
+              - "Field 42 added"
+
+  - name: diff json exposes the third change of a multi-change comparison
+    steps:
+      - fixture:
+          file: xa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000","41":"TERMID01"}}'
+      - fixture:
+          file: xb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999","42":"MERCHANT0000001"}}'
+      - run:
+          command: "iso8583tool convert xa.json --to hex --output xa.hex"
+      - run:
+          command: "iso8583tool convert xb.json --to hex --output xb.hex"
+      - run:
+          command: "iso8583tool diff xa.hex xb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[2].kind", equals: "added" }
+
+  # ============================================================================
+  # diff — nested EMV tag change
+  # ============================================================================
+  - name: diff detects a change inside a nested EMV tag path
+    steps:
+      - fixture:
+          file: ta.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F02":"000000005000"}}'
+      - fixture:
+          file: tb.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F02":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ta.json --to hex --output ta.hex"
+      - run:
+          command: "iso8583tool convert tb.json --to hex --output tb.hex"
+      - run:
+          command: "iso8583tool diff ta.hex tb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Field 55.9F02 changed"
+
+  - name: diff json records the nested EMV tag path
+    steps:
+      - fixture:
+          file: ta.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F02":"000000005000"}}'
+      - fixture:
+          file: tb.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F02":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ta.json --to hex --output ta.hex"
+      - run:
+          command: "iso8583tool convert tb.json --to hex --output tb.hex"
+      - run:
+          command: "iso8583tool diff ta.hex tb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].path", equals: "55.9F02" }
+
+  # ============================================================================
+  # diff — filtering
+  # ============================================================================
+  - name: diff --filter scopes the comparison to a field subtree
+    steps:
+      - fixture:
+          file: fa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"},"binary_fields":{"55.9F02":"000000005000"}}'
+      - fixture:
+          file: fb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"},"binary_fields":{"55.9F02":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert fa.json --to hex --output fa.hex"
+      - run:
+          command: "iso8583tool convert fb.json --to hex --output fb.hex"
+      - run:
+          command: "iso8583tool diff fa.hex fb.hex --no-color --filter 55"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "55.9F02"
+      - assert:
+          stdout:
+            not_contains: "Field 4 "
+
+  - name: diff --filter mti isolates the MTI change from field changes
+    steps:
+      - fixture:
+          file: fa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: fb.json
+          content: '{"mti":"0110","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert fa.json --to hex --output fa.hex"
+      - run:
+          command: "iso8583tool convert fb.json --to hex --output fb.hex"
+      - run:
+          command: "iso8583tool diff fa.hex fb.hex --no-color --filter mti"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI changed"
+      - assert:
+          stdout:
+            not_contains: "Field 4 "
+
+  - name: diff --filter on an absent field reports no field matched
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --no-color --filter 99"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "No field matched filter"
+
+  - name: diff json lists an unmatched filter under missing_filters
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format json --filter 99"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.missing_filters[0]", equals: "99" }
+
+  - name: diff notes only the absent filter when another filter matches
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --no-color --filter 4 --filter 99"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 4 changed"
+              - "No field matched filter: 99"
+
+  # ============================================================================
+  # diff — argument & stdin handling
+  # ============================================================================
+  - name: diff rejects reading both sides from stdin
+    steps:
+      - run:
+          command: "iso8583tool diff - -"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "only one of BEFORE or AFTER"
+
+  - name: diff with a single argument prints usage and fails
+    steps:
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "Usage: iso8583tool diff"
+
+  - name: diff with no arguments prints usage and fails
+    steps:
+      - run:
+          command: "iso8583tool diff"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "Usage: iso8583tool diff"
+
+  - name: diff reads the after side from inline stdin
+    steps:
+      - fixture:
+          file: sa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: sb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert sa.json --to hex --output sa.hex"
+      - run:
+          command: "iso8583tool convert sb.json --to hex --output sb.hex"
+      - run:
+          command: "iso8583tool diff sa.hex - --no-color"
+          stdin:
+            file: sb.hex
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Field 4 changed"
+
+  - name: diff reads the before side from inline stdin
+    steps:
+      - fixture:
+          file: sa.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: sb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert sa.json --to hex --output sa.hex"
+      - run:
+          command: "iso8583tool convert sb.json --to hex --output sb.hex"
+      - run:
+          command: "iso8583tool diff - sb.hex --no-color"
+          stdin:
+            file: sa.hex
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Field 4 changed"
+              - "- 000000005000"
+              - "+ 000000009999"
+
+  - name: diff reports a missing before file distinctly by side
+    steps:
+      - run:
+          command: "iso8583tool diff /nope/before.hex ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "before:"
+
+  # ============================================================================
+  # diff — output format selection
+  # ============================================================================
+  - name: diff defaults to the text format
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Field 4 changed"
+
+  - name: diff json output is parseable and exposes a changes array
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].before", equals: "000000005000" }
+
+  - name: diff rejects an unsupported output format
+    steps:
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format bogus"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported format"
+
+  # ============================================================================
+  # diff — masking of cardholder data (default) vs --unsafe
+  # ============================================================================
+  - name: diff masks a changed PAN by default
+    steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4222222222222222"}}'
+      - run:
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
+      - run:
+          command: "iso8583tool diff pa.hex pb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "411111******1111"
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: diff --unsafe reveals the changed PAN in the clear
+    steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4222222222222222"}}'
+      - run:
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
+      - run:
+          command: "iso8583tool diff pa.hex pb.hex --no-color --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "4111111111111111"
+
+  - name: diff json masks the changed PAN before value by default
+    steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4222222222222222"}}'
+      - run:
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
+      - run:
+          command: "iso8583tool diff pa.hex pb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].before", equals: "411111******1111" }
+
+  - name: diff json --unsafe exposes the raw PAN before value
+    steps:
+      - fixture:
+          file: pa.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4111111111111111"}}'
+      - fixture:
+          file: pb.json
+          content: '{"mti":"0100","fields":{"11":"123456","2":"4222222222222222"}}'
+      - run:
+          command: "iso8583tool convert pa.json --to hex --output pa.hex"
+      - run:
+          command: "iso8583tool convert pb.json --to hex --output pb.hex"
+      - run:
+          command: "iso8583tool diff pa.hex pb.hex --format json --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].before", equals: "4111111111111111" }
+
+  - name: diff masks a changed EMV cryptogram tag by default
+    steps:
+      - fixture:
+          file: qa.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F6B":"4111111111111111D29122011234567890"}}'
+      - fixture:
+          file: qb.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F6B":"4222222222222222D29122011234567890"}}'
+      - run:
+          command: "iso8583tool convert qa.json --to hex --output qa.hex"
+      - run:
+          command: "iso8583tool convert qb.json --to hex --output qb.hex"
+      - run:
+          command: "iso8583tool diff qa.hex qb.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: diff --unsafe reveals a changed track-equivalent tag
+    steps:
+      - fixture:
+          file: qa.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F6B":"4111111111111111D29122011234567890"}}'
+      - fixture:
+          file: qb.json
+          content: '{"mti":"0100","fields":{"11":"123456"},"binary_fields":{"55.9F6B":"4222222222222222D29122011234567890"}}'
+      - run:
+          command: "iso8583tool convert qa.json --to hex --output qa.hex"
+      - run:
+          command: "iso8583tool convert qb.json --to hex --output qb.hex"
+      - run:
+          command: "iso8583tool diff qa.hex qb.hex --no-color --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "4111111111111111"
+
+  # ============================================================================
+  # diff — unpack-failure friendliness on a broken side
+  # ============================================================================
+  - name: diff gives a friendly cannot-unpack error on a broken after side
+    steps:
+      - fixture:
+          file: gb.txt
+          content: "FFFFFFFFFFFFFFFF"
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex gb.txt"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+
+  - name: diff never surfaces the raw decode-content error on a broken side
+    steps:
+      - fixture:
+          file: gb.txt
+          content: "FFFFFFFFFFFFFFFF"
+      - run:
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex gb.txt"
+      - assert:
+          exit_code: 1
+          stderr:
+            not_contains: "failed to decode content"
+
+  - name: diff gives a friendly cannot-unpack error on a broken before side
+    steps:
+      - fixture:
+          file: ga.txt
+          content: "FFFFFFFFFFFFFFFF"
+      - run:
+          command: "iso8583tool diff ga.txt ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+
+  # ============================================================================
+  # diff — differential / metamorphic: A vs B mirrors B vs A
+  # ============================================================================
+  - name: diff A B shows the changed value flowing old to new
+    steps:
+      - fixture:
+          file: da.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: db.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert da.json --to hex --output da.hex"
+      - run:
+          command: "iso8583tool convert db.json --to hex --output db.hex"
+      - run:
+          command: "iso8583tool diff da.hex db.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "- 000000005000"
+              - "+ 000000009999"
+
+  - name: diff B A reverses the changed direction of the same pair
+    steps:
+      - fixture:
+          file: da.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: db.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert da.json --to hex --output da.hex"
+      - run:
+          command: "iso8583tool convert db.json --to hex --output db.hex"
+      - run:
+          command: "iso8583tool diff db.hex da.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "- 000000009999"
+              - "+ 000000005000"
+
+  - name: diff A B added becomes removed under diff B A
+    steps:
+      - fixture:
+          file: ea.json
+          content: '{"mti":"0100","fields":{"11":"123456"}}'
+      - fixture:
+          file: eb.json
+          content: '{"mti":"0100","fields":{"11":"123456","42":"MERCHANT0000001"}}'
+      - run:
+          command: "iso8583tool convert ea.json --to hex --output ea.hex"
+      - run:
+          command: "iso8583tool convert eb.json --to hex --output eb.hex"
+      - run:
+          command: "iso8583tool diff ea.hex eb.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].kind", equals: "added" }
+      - run:
+          command: "iso8583tool diff eb.hex ea.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            json: { path: "$.changes[0].kind", equals: "removed" }
+
+  - name: diff of a message against itself is empty in both directions
+    steps:
+      - fixture:
+          file: ha.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - run:
+          command: "iso8583tool convert ha.json --to hex --output ha.hex"
+      - run:
+          command: "iso8583tool diff ha.hex ha.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "No differences."
+
+  # ============================================================================
+  # diff — colorization contract
+  # ============================================================================
+  - name: diff with color always emits an ANSI escape byte
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --color always"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "\x1b"
+
+  - name: diff with color never emits no ANSI escape byte
+    steps:
+      - fixture:
+          file: ca.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000005000"}}'
+      - fixture:
+          file: cb.json
+          content: '{"mti":"0100","fields":{"11":"123456","4":"000000009999"}}'
+      - run:
+          command: "iso8583tool convert ca.json --to hex --output ca.hex"
+      - run:
+          command: "iso8583tool convert cb.json --to hex --output cb.hex"
+      - run:
+          command: "iso8583tool diff ca.hex cb.hex --color never"
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "\x1b"

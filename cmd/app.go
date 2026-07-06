@@ -472,9 +472,11 @@ func (a *App) runConvert(args []string) int {
 	outputPath := flagSet.String("output", "", "path to write the result")
 	encoding := flagSet.String("encoding", "auto", "message-side encoding: auto, hex, or raw")
 	to := flagSet.String("to", "", "force output direction: json or hex (default: auto-detect)")
+	raw := flagSet.String("raw", "", "inline input message instead of a file argument")
 	flagSet.Usage = func() {
 		writeLine(flagSet.Output(), "Convert between a packed message and a JSON document (direction auto-detected).")
-		writeLine(flagSet.Output(), "Usage: iso8583tool convert [INPUT|-] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
+		writeLine(flagSet.Output(), "Usage: iso8583tool convert [INPUT|-] [--raw MESSAGE] [--to json|hex] [--output PATH] [--spec NAME|PATH] [--config PATH] [--encoding auto|hex|raw]")
+		writeLine(flagSet.Output(), "Reads from stdin when INPUT is '-' or omitted; --raw takes an inline message (JSON or hex/raw) instead.")
 		writeLine(flagSet.Output(), "JSON input is packed to a message; a message is unpacked to a JSON document.")
 		writeLine(flagSet.Output(), "Output is UNMASKED for round-trip fidelity, unlike view/diff/send which mask by default: the PAN, track, and PIN are emitted in the clear. Treat the result as sensitive and use redact to share it safely.")
 		writeLine(flagSet.Output(), "Defaults to the BASE I starter spec; use --spec to pick a preset/JSON spec, and --config for extension catalogs or default overrides.")
@@ -495,7 +497,7 @@ func (a *App) runConvert(args []string) int {
 		return 1
 	}
 
-	source, err := messageio.ReadSource(target, "", a.inputStdin(target, ""))
+	source, err := messageio.ReadSource(target, *raw, a.inputStdin(target, *raw))
 	if err != nil {
 		writeLine(a.stderr, err)
 		return 1
@@ -511,6 +513,13 @@ func (a *App) runConvert(args []string) int {
 	var summary string
 	switch direction {
 	case "hex": // JSON document -> packed message
+		// --to hex packs a JSON document. If the input is not JSON, say so and
+		// point at the direction that fits, rather than leaking a raw json decode
+		// error ("cannot unmarshal number into Go value of type Document").
+		if !messageio.LooksLikeJSON(source) {
+			writeLine(a.stderr, errors.New("--to hex packs a JSON document, but the input is not JSON; use --to json to unpack a packed message, or drop --to to auto-detect"))
+			return 1
+		}
 		doc, err := messageio.ParseDocument(source)
 		if err != nil {
 			writeLine(a.stderr, err)
@@ -537,6 +546,13 @@ func (a *App) runConvert(args []string) int {
 		out = encoded
 		summary = fmt.Sprintf("packed %d fields to %s", result.FieldCount, outEnc)
 	case "json": // packed message -> JSON document
+		// --to json unpacks a packed message. If the input already looks like a
+		// JSON document, the user almost certainly wants the other direction;
+		// say so instead of failing deep in the hex decoder.
+		if messageio.LooksLikeJSON(source) {
+			writeLine(a.stderr, errors.New("--to json unpacks a packed message, but the input already looks like a JSON document; use --to hex to pack it, or drop --to to auto-detect"))
+			return 1
+		}
 		msgRaw, _, err := resolveInput(source, *encoding)
 		if err != nil {
 			writeLine(a.stderr, err)

@@ -63,16 +63,6 @@ func readLimited(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// ReadMessage reads a message from a file, stdin, or inline value and decodes
-// it with the given encoding.
-func ReadMessage(target, inline, encoding string, stdin io.Reader) ([]byte, error) {
-	data, err := ReadSource(target, inline, stdin)
-	if err != nil {
-		return nil, err
-	}
-	return DecodeInput(data, encoding)
-}
-
 // LooksLikeHex reports whether data is plausibly a hex-encoded message: after
 // dropping ASCII whitespace it is non-empty, has an even number of digits, and
 // contains only hex digits. Raw binary messages carry control bytes (such as a

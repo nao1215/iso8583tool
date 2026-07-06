@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -21,11 +22,15 @@ import (
 func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Document, error) {
 	msg := iso8583.NewMessage(spec)
 	if err := safeUnpack(msg, raw); err != nil {
-		return messageio.Document{}, err
+		// Present the same field-aware, actionable diagnosis view emits, so
+		// convert/diff/redact no longer leak moov's raw "failed to decode
+		// content" internals for the identical "won't unpack under this spec"
+		// failure. Run doctor to find the right preset.
+		return messageio.Document{}, errors.New(diagnoseUnpack(err, raw).String())
 	}
 	mti, err := msg.GetMTI()
 	if err != nil {
-		return messageio.Document{}, err
+		return messageio.Document{}, errors.New(diagnoseUnpack(err, raw).String())
 	}
 
 	doc := messageio.Document{

@@ -178,7 +178,8 @@ $ iso8583tool redact examples/basei/0100-auth-request.hex
 ## `convert`
 
 Converts between a packed message and a JSON document. The direction is detected
-from the input; use `--to json|hex` to force it.
+from the input; use `--to json|hex` to force it. The message comes from a file
+argument, `-`/stdin, or an inline `--raw MESSAGE`.
 
 ```shell
 iso8583tool convert examples/basei/0100-auth-request.json

@@ -13,8 +13,7 @@ scenarios:
   - name: matches a lowercase EMV tag in view
     steps:
       - run:
-          shell: true
-          command: "iso8583tool view $ISO_EXAMPLES/basei/0100-auth-request.hex --filter 55.9f02 --no-color"
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 55.9f02 --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -26,8 +25,7 @@ scenarios:
   - name: matches a lowercase EMV tag in diff
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 55.8a"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 55.8a"
       - assert:
           exit_code: 0
           stdout:
@@ -39,8 +37,7 @@ scenarios:
   - name: accepts "0" as an MTI alias in diff
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 0"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 0"
       - assert:
           exit_code: 0
           stdout:
@@ -49,8 +46,7 @@ scenarios:
   - name: reports an unmatched diff filter
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 999"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 999"
       - assert:
           exit_code: 0
           stdout:
@@ -59,8 +55,7 @@ scenarios:
   - name: reports an unmatched filter in JSON
     steps:
       - run:
-          shell: true
-          command: "iso8583tool diff $ISO_EXAMPLES/basei/0100-auth-request.hex $ISO_EXAMPLES/basei/0110-auth-response.hex --filter 999 --format json"
+          command: "iso8583tool diff ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 999 --format json"
       - assert:
           exit_code: 0
           stdout:

@@ -18,16 +18,14 @@ scenarios:
   - name: sends an 0800 and decodes the 0810 response (2byte-binary)
     services: &mock_2byte
       - name: mock
-        shell: true
-        command: "iso-mock --framing 2byte-binary --reply-hex $REPLY_HEX --ready-file ready.txt"
+        command: "iso-mock --framing 2byte-binary --reply-hex ${env:REPLY_HEX} --ready-file ready.txt"
         ready:
           file: ready.txt
           store: addr
           timeout: 5s
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing 2byte-binary"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing 2byte-binary"
       - assert:
           exit_code: 0
           stdout:
@@ -42,8 +40,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing 2byte-binary --no-color"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing 2byte-binary --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -56,8 +53,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.json --framing 2byte-binary --format json"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.json --framing 2byte-binary --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -80,9 +76,13 @@ scenarios:
   - name: reads the message from stdin via -
     services: *mock_2byte
     steps:
+      - fixture:
+          file: msg.hex
+          base64: MzAzODMwMzAzMDMyMzMzODMwMzEzMDMwMzAzMDM4MzEzMDMwMzAzMDMwMzQzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzNjMwMzQzMTM2MzEzNjMxMzYzNjM1MzQzMzMyMzEzMTM2MzEzNjMxMzYzMDM2MzAzNDMwMzAzMTU0NDU1MjRENEU0NTU0MzEzMDMxMzU0ODQ1NDE1MjU0NDI0NTQxNTQzRDQyNDE1MzQ1NDkzMzMwMzE=
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} - --framing 2byte-binary < $ISO_EXAMPLES/basei/0800-network-echo.hex"
+          command: "iso8583tool send ${addr} - --framing 2byte-binary"
+          stdin:
+            file: msg.hex
       - assert:
           exit_code: 0
           stdout:
@@ -93,16 +93,14 @@ scenarios:
   - name: frames with a 4-digit ASCII length header
     services:
       - name: mock
-        shell: true
-        command: "iso-mock --framing 4digit-ascii --reply-hex $REPLY_HEX --ready-file ready.txt"
+        command: "iso-mock --framing 4digit-ascii --reply-hex ${env:REPLY_HEX} --ready-file ready.txt"
         ready:
           file: ready.txt
           store: addr
           timeout: 5s
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing 4digit-ascii --format json"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing 4digit-ascii --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -118,16 +116,14 @@ scenarios:
   - name: sends with no length header and reads the reply until EOF
     services: &mock_none
       - name: mock
-        shell: true
-        command: "iso-mock --framing none --reply-hex $REPLY_HEX --ready-file ready.txt"
+        command: "iso-mock --framing none --reply-hex ${env:REPLY_HEX} --ready-file ready.txt"
         ready:
           file: ready.txt
           store: addr
           timeout: 5s
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing none --format json"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing none --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -144,8 +140,7 @@ scenarios:
     services: *mock_none
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing none"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing none"
       - assert:
           exit_code: 0
           stdout:
@@ -156,16 +151,14 @@ scenarios:
   - name: exits non-zero with a clear error when the response times out
     services:
       - name: mock
-        shell: true
-        command: "iso-mock --framing 2byte-binary --reply-hex $REPLY_HEX --ready-file ready.txt --no-reply"
+        command: "iso-mock --framing 2byte-binary --reply-hex ${env:REPLY_HEX} --ready-file ready.txt --no-reply"
         ready:
           file: ready.txt
           store: addr
           timeout: 5s
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing 2byte-binary --timeout 600ms"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing 2byte-binary --timeout 600ms"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -174,16 +167,14 @@ scenarios:
   - name: exits non-zero when a none-framing peer never replies
     services:
       - name: mock
-        shell: true
-        command: "iso-mock --framing none --reply-hex $REPLY_HEX --ready-file ready.txt --no-reply"
+        command: "iso-mock --framing none --reply-hex ${env:REPLY_HEX} --ready-file ready.txt --no-reply"
         ready:
           file: ready.txt
           store: addr
           timeout: 5s
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --framing none --timeout 600ms"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing none --timeout 600ms"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -193,8 +184,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --expect-mti 0810 --expect-field 39=00 --expect-field 70=301"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --expect-mti 0810 --expect-field 39=00 --expect-field 70=301"
       - assert:
           exit_code: 0
           stdout:
@@ -204,8 +194,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --expect-mti 0800"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --expect-mti 0800"
       - assert:
           exit_code: { not: 0 }
       # The exchange is still printed (so a failing run shows the response).
@@ -221,8 +210,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --expect-field 39=99"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --expect-field 39=99"
       - assert:
           exit_code: { not: 0 }
           stdout:
@@ -236,8 +224,7 @@ scenarios:
     services: *mock_2byte
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send ${addr} $ISO_EXAMPLES/basei/0800-network-echo.hex --expect-field 39"
+          command: "iso8583tool send ${addr} ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --expect-field 39"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -248,8 +235,7 @@ scenarios:
   - name: frames and prints the request without connecting
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run"
       - assert:
           exit_code: 0
           stdout:
@@ -262,8 +248,7 @@ scenarios:
   - name: emits a machine-readable dry-run record
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run --format json"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -282,8 +267,7 @@ scenarios:
   - name: withholds the framed bytes by default
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run --no-color"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -292,8 +276,7 @@ scenarios:
   - name: reveals the framed wire bytes under --unsafe
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run --unsafe --no-color"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run --unsafe --no-color"
       - assert:
           exit_code: 0
           stdout:
@@ -302,8 +285,7 @@ scenarios:
   - name: includes framed_hex in JSON only under --unsafe
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run --unsafe --format json"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run --unsafe --format json"
       - assert:
           exit_code: 0
           stdout:
@@ -312,8 +294,7 @@ scenarios:
   - name: rejects expectations because there is no response to assert
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --dry-run --expect-mti 0810"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --dry-run --expect-mti 0810"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -322,8 +303,7 @@ scenarios:
   - name: rejects an invalid --framing value
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1:1 $ISO_EXAMPLES/basei/0800-network-echo.hex --framing bogus"
+          command: "iso8583tool send 127.0.0.1:1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --framing bogus"
       - assert:
           exit_code: { not: 0 }
           stderr:
@@ -332,8 +312,7 @@ scenarios:
   - name: rejects a HOST:PORT without a port
     steps:
       - run:
-          shell: true
-          command: "iso8583tool send 127.0.0.1 $ISO_EXAMPLES/basei/0800-network-echo.hex --timeout 500ms"
+          command: "iso8583tool send 127.0.0.1 ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --timeout 500ms"
       - assert:
           exit_code: { not: 0 }
           stderr:

@@ -36,10 +36,9 @@ scenarios:
 
   - name: views a BOM-prefixed hex file
     steps:
-      - run: &build_bom_hex
-          shell: true
-          command: |
-            { printf '\357\273\277'; cat "$ISO_EXAMPLES/basei/0110-auth-response.hex"; } > bom.hex
+      - fixture: &bom_hex
+          file: bom.hex
+          base64: 77u/MzAzMTMxMzAzNzMyMzMzODMwMzAzMDMwMzA0NTQzMzEzODMyMzAzMjMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzEzNjM0MzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzEzMTMxMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDM1MzAzMDMwMzAzNjMwMzQzMTMyMzMzNDM1MzYzMTMyMzMzNDM1MzYzMTMyMzMzNDM1MzczMDM2MzAzNDUyNDU0NjMxMzIzMzM0MzUzNjM3MzgzOTQxMzEzMjMzMzQzNTMwMzA1NDQ1NTI0RDQ5NDQzMDMxNEQ0NTUyNDM0ODQxNEU1NDMwMzAzMDMwMzAzMDMxMzAzMjMxNDE1MDUwNTI0RjU2NDU0NDNENTk3QzQyNDE0QzQxNEU0MzQ1M0Q0RTQxMzMzOTMyMzAzMjM3NzEwNjExMjIzMzQ0NTU2NjcyMDNBQUJCQ0M4QTAyMzAzMDkxMDhBMUIyQzNENEU1RjYwNzA4MzAzMTM1NEU0NTU0NTc0RjUyNEI1NDUyNDE0MzQ1M0Q0RjRCCg==
       - run:
           command: iso8583tool view bom.hex --no-color
       - assert:
@@ -49,7 +48,7 @@ scenarios:
 
   - name: doctors a BOM-prefixed hex file as hex, not raw
     steps:
-      - run: *build_bom_hex
+      - fixture: *bom_hex
       - run:
           command: iso8583tool doctor bom.hex --no-color
       - assert:
@@ -59,7 +58,7 @@ scenarios:
 
   - name: validates a BOM-prefixed hex file
     steps:
-      - run: *build_bom_hex
+      - fixture: *bom_hex
       - run:
           command: iso8583tool validate bom.hex --no-color
       - assert:
@@ -69,7 +68,7 @@ scenarios:
 
   - name: converts a BOM-prefixed hex file to JSON
     steps:
-      - run: *build_bom_hex
+      - fixture: *bom_hex
       - run:
           command: iso8583tool convert bom.hex --to json
       - assert:

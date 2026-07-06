@@ -1,0 +1,1114 @@
+# Deep E2E matrix for `iso8583tool view` and its --filter surface.
+#
+# This suite intentionally goes beyond view.atago.yaml / filter.atago.yaml: it
+# exercises the format branches (describe / text / json), the encoding matrix
+# (auto / hex / raw and their failure modes), every spec preset and its unknown /
+# missing spec errors, the color modes (including a literal-ESC assertion), the
+# cardholder + unknown-TLV masking rules with their --unsafe counterparts, the
+# full filter algebra (single / multiple / composite / case-insensitive / MTI /
+# absent / JSON shape), the friendly unpack-failure error, negative-space misuse,
+# and metamorphic/differential agreements across the 8 BASE I samples.
+#
+# Env (exported by e2e/run.sh): ISO_EXAMPLES == abs path to examples/.
+# Reference it with atago host-env expansion: ${env:ISO_EXAMPLES}.
+# Almost everything runs shell-free (positional file / inline --raw / base64
+# stdin / --output into the workdir) so it is cross-platform. Only the oversized
+# 1 MiB input scenario stays gated skip:{os:windows}: it needs the POSIX
+# /dev/zero device to synthesize a >1 MiB file and has no portable equivalent.
+version: "1"
+
+suite:
+  name: iso8583tool view matrix
+
+scenarios:
+  # ---------------------------------------------------------------------------
+  # Formats: describe (default) vs text alias vs json
+  # ---------------------------------------------------------------------------
+  - name: format - describe (default) prints the Spec and Summary headers
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Spec: basei-starter"
+              - "Summary:"
+              - "JPY 5000"
+              - "STAN 123456"
+
+  - name: format - describe prints the moov describe body with the field table
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "BASE I Starter ASCII Message:"
+              - "Primary Account Number"
+              - "Processing Code"
+
+  - name: format - explicit --format describe matches the default surface
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format describe --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Spec: basei-starter"
+              - "Summary:"
+              - "Approved"
+
+  - name: format - --format text is an accepted alias of describe
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format text --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "BASE I Starter ASCII Message:"
+
+  - name: format - json emits an mti key and no Spec/Summary headers
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+      - assert:
+          stdout:
+            not_contains: "Spec: basei-starter"
+
+  - name: format - json carries a document-shaped fields map
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"fields"'
+              - '"decoded"'
+              - '"summary"'
+
+  - name: format - unsupported --format xml exits 1 with an unsupported-format error
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format xml --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "unsupported"
+              - "xml"
+
+  - name: format - unsupported --format yaml exits 1 (unsupported view format)
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format yaml --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported view format"
+
+  - name: format - json output stays uncolored even with --color always
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json --color always"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  # ---------------------------------------------------------------------------
+  # Encodings: auto vs hex vs raw, and their failure modes
+  # ---------------------------------------------------------------------------
+  - name: encoding - auto decodes a .hex example file
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --encoding auto --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: encoding - explicit hex decodes the same .hex example file
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --encoding hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: encoding - raw reading of a hex-TEXT file cannot unpack (bytes are the ASCII digits)
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --encoding raw --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+
+  - name: encoding - inline --raw hex is auto-detected and decoded
+    steps:
+      - run:
+          command: "iso8583tool view --raw 303131303732333830303030304543313832303230303030303030303030303030303030313634313131313131313131313131313131303030303030303030303030303035303030303630343132333435363132333435363132333435373036303452454631323334353637383941313233343530305445524D494430314D45524348414E5430303030303031303231415050524F5645443D597C42414C414E43453D4E4133393230323771061122334455667203AABBCC8A0230309108A1B2C3D4E5F607083031354E4554574F524B54524143453D4F4B --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  - name: encoding - odd-length hex under --encoding hex exits 1 (odd length)
+    steps:
+      - run:
+          command: "iso8583tool view --raw ABC --encoding hex --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "odd length"
+
+  - name: encoding - non-hex under --encoding hex exits 1 (invalid byte)
+    steps:
+      - run:
+          command: "iso8583tool view --raw ZZZZ --encoding hex --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid byte"
+
+  - name: encoding - empty hex input exits 1 (hex input is empty)
+    steps:
+      - run:
+          command: "iso8583tool view - --encoding hex --no-color"
+          stdin:
+            base64: "ICAg"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "hex input is empty"
+
+  - name: encoding - explicit --encoding raw is honored as an accepted value on a raw ASCII message
+    steps:
+      - run:
+          command: "iso8583tool view - --encoding raw --format json"
+          stdin:
+            base64: "MDgwMDAyMzgwMTAwMDA4MTAwMDAwNDAwMDAwMDAwMDAwMDAwMDYwNDE2MTYxNjY1NDMyMTE2MTYxNjA2MDQwMDFURVJNTkVUMTAxNUhFQVJUQkVBVD1CQVNFSTMwMQ=="
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: encoding - unsupported --encoding value exits 1
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --encoding base64 --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported encoding"
+
+  # ---------------------------------------------------------------------------
+  # Presets: basei-starter / spec87ascii / spec87bcd-starter and preset errors
+  # ---------------------------------------------------------------------------
+  - name: preset - explicit basei-starter matches the default and labels the Spec line
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec basei-starter --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Spec: basei-starter"
+
+  - name: preset - spec87ascii decodes the spec87ascii network-echo sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --spec spec87ascii --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Spec: spec87ascii"
+              - "ISO 8583:1987 ASCII Message:"
+
+  - name: preset - spec87ascii network-echo decodes to MTI 0800 in json
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/spec87ascii/0800-network-echo.hex --spec spec87ascii --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: preset - spec87bcd-starter is a real preset (decode error, not unknown spec)
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec spec87bcd-starter --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+      - assert:
+          stderr:
+            not_contains: "unknown spec"
+
+  - name: preset - unknown preset basei-startr exits 1 and points at iso8583tool specs
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec basei-startr --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains:
+              - "unknown spec"
+              - "iso8583tool specs"
+
+  - name: preset - missing json spec path exits 1 (spec file not found)
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec /nope/spec.json --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "spec file not found"
+
+  - name: preset - a non-json non-preset spec value is rejected as unsupported spec file
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --spec notes.txt --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "unsupported spec file"
+
+  # ---------------------------------------------------------------------------
+  # Color: auto / always / never / --no-color and the invalid value
+  # ---------------------------------------------------------------------------
+  - name: color - --color never keeps the describe output plain
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --color never"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Spec: basei-starter"
+
+  - name: color - --no-color keeps the describe output plain
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Primary Account Number"
+
+  - name: color - --color auto is non-tty under atago and stays plain
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --color auto"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Spec: basei-starter"
+
+  - name: color - --color always injects an ANSI CSI escape byte
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --color always"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: "\\["
+
+  - name: color - invalid --color value exits 1 (invalid --color)
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --color rainbow"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "invalid --color"
+
+  # ---------------------------------------------------------------------------
+  # Masking: cardholder data (F2) and unknown TLV, with --unsafe counterparts
+  # ---------------------------------------------------------------------------
+  - name: mask - json masks the PAN (F2) by default on the 0100 sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"2": "411111******1111"'
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: mask - --unsafe reveals the raw PAN (F2) on the 0100 sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"2": "4111111111111111"'
+
+  - name: mask - masked and unsafe PAN are the same 16-character length
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '"2": "411111\*{6}1111"'
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            matches: '"2": "[0-9]{16}"'
+
+  - name: mask - describe masks the PAN by default on the 0200 sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "411111******1111"
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: mask - describe --unsafe reveals the PAN on the 0200 sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "4111111111111111"
+
+  - name: mask - describe masks the PAN by default on the 0210 response
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "411111******1111"
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  - name: mask - unknown-TLV file shows an Unknown TLV section with masked bytes
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Unknown TLV Tags:"
+              - "55.DF8129"
+              - "********"
+      - assert:
+          stdout:
+            not_contains: "AABBCCDD"
+
+  - name: mask - unknown-TLV --unsafe reveals the raw tag bytes in describe
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --no-color --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "55.DF8129"
+              - "AABBCCDD"
+
+  - name: mask - unknown-TLV json masks the tag under unknown_tags by default
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"unknown_tags"'
+              - '"path": "55.DF8129"'
+              - '"raw": "********"'
+      - assert:
+          stdout:
+            not_contains: "AABBCCDD"
+
+  - name: mask - unknown-TLV json --unsafe reveals the raw tag bytes
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request-unknown-tlv.hex --format json --unsafe"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"raw": "AABBCCDD"'
+
+  # ---------------------------------------------------------------------------
+  # Filters: single / multiple / composite / case / MTI / absent / JSON shape
+  # ---------------------------------------------------------------------------
+  - name: filter - a single --filter 4 shows only F4 and not the PAN F2
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 4 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F4 Transaction Amount: 000000005000"
+      - assert:
+          stdout:
+            not_contains: "Primary Account Number"
+
+  - name: filter - multiple --filter 4 --filter 11 shows both and not the PAN F2
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 4 --filter 11 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "F4 Transaction Amount"
+              - "F11 Systems Trace Audit Number"
+      - assert:
+          stdout:
+            not_contains: "411111******1111"
+
+  - name: filter - a composite EMV tag --filter 55.9F02 selects the leaf
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 55.9F02 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F55.9F02 Amount, Authorised (Numeric): 000000005000"
+
+  - name: filter - a lowercase EMV tag --filter 55.9f02 is case-insensitive on the 0200 sample
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --filter 55.9f02 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "55.9F02"
+      - assert:
+          stdout:
+            not_contains: "<not present>"
+
+  - name: filter - --filter mti selects the MTI line
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter mti --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI: 0100"
+      - assert:
+          stdout:
+            not_contains: "Transaction Amount"
+
+  - name: filter - --filter 0 is an MTI alias on the 0110 response
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --filter 0 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI: 0110"
+
+  - name: filter - an absent field --filter 999 shows <not present> and still exits 0
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 999 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F999: <not present>"
+
+  - name: filter - a present+absent mix shows the present field and marks the absent one
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 4 --filter 999 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "F4 Transaction Amount"
+              - "F999: <not present>"
+
+  - name: filter - json shape carries a missing_filters array listing the absent path
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 4 --filter 999 --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"missing_filters"'
+              - '"999"'
+              - '"4": "000000005000"'
+
+  - name: filter - json shape emits an empty missing_filters array when all matched
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --filter 4 --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"missing_filters": []'
+
+  - name: filter - json MTI selection carries the decoded meaning, not a fields entry
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter mti --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"path": "0"'
+              - "Authorization Request from Acquirer"
+              - '"missing_filters": []'
+
+  - name: filter - a composite EMV tag lands under binary_fields in json
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --filter 55.9F02 --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - '"binary_fields"'
+              - '"55.9F02": "000000005000"'
+
+  - name: filter - only-absent filters produce a body with just the not-present line
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --filter 4 --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "F4: <not present>"
+
+  # ---------------------------------------------------------------------------
+  # Unpack-failure friendly error
+  # ---------------------------------------------------------------------------
+  - name: unpack - view --raw FFFF... reports cannot unpack field, not a decode-content leak
+    steps:
+      - run:
+          command: "iso8583tool view --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "cannot unpack field"
+      - assert:
+          stderr:
+            not_contains: "failed to decode content"
+
+  - name: unpack - the diagnosis reports the input byte count
+    steps:
+      - run:
+          command: "iso8583tool view --raw FFFFFFFFFFFFFFFF --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "input was 8 bytes"
+
+  # ---------------------------------------------------------------------------
+  # Negative space: misuse and safety limits
+  # ---------------------------------------------------------------------------
+  - name: negative - too many positional arguments exits 1 with usage
+    steps:
+      - run:
+          command: "iso8583tool view a b c --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "Usage: iso8583tool view"
+
+  - name: negative - an unknown flag exits 1
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --bogusflag"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "flag provided but not defined"
+
+  - name: negative - passing both a file argument and --raw is rejected
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --raw 30303030 --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "either a file argument or --raw"
+
+  - name: negative - a missing file argument exits 1
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/does-not-exist.hex --no-color"
+      - assert:
+          exit_code: 1
+
+  - name: negative - control bytes in a field value are rendered in caret form (no raw ESC)
+    steps:
+      - run:
+          command: "iso8583tool view --raw 303131303732333830303030304543313832303230303030303030303030303030303030313634313131313131313131313131313131303030303030303030303030303035303030303630343132333435363132333435363132333435373036303452454631323334353637383941313233343530301B45524D494430314D45524348414E5430303030303031303231415050524F5645443D597C42414C414E43453D4E4133393230323771061122334455667203AABBCC8A0230309108A1B2C3D4E5F607083031354E4554574F524B54524143453D4F4B --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "^[ERMID01"
+
+  - name: negative - oversized input over the 1 MiB limit is rejected before decode
+    # win-skip: needs a >1 MiB input; the only sources are the POSIX /dev/zero
+    # device or a committed/embedded >1 MiB fixture. atago has no primitive that
+    # generates N zero bytes cross-platform and this task edits only the spec
+    # files, so no portable form exists.
+    skip: { os: windows }
+    steps:
+      - run:
+          shell: true
+          command: "head -c 1100000 /dev/zero > big.bin"
+      - run:
+          command: "iso8583tool view big.bin --no-color"
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "exceeds the 1048576-byte limit"
+
+  - name: negative - stdin round-trip decodes a piped hex message
+    steps:
+      - run:
+          command: "iso8583tool sample 0210-financial-response --format hex"
+          stdout_to: piped0210.hex
+      - run:
+          command: "iso8583tool view - --format json"
+          stdin: { file: piped0210.hex }
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0210"'
+
+  # ---------------------------------------------------------------------------
+  # Metamorphic / differential: describe vs json agree on the MTI per sample
+  # ---------------------------------------------------------------------------
+  - name: differential - describe and json agree on MTI for 0100
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0100"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: differential - describe and json agree on MTI for 0110
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0110"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0110"'
+
+  - name: differential - describe and json agree on MTI for 0200
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0200"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0200"'
+
+  - name: differential - describe and json agree on MTI for 0210
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0210"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0210"'
+
+  - name: differential - describe and json agree on MTI for 0420
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0420"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0420"'
+
+  - name: differential - describe and json agree on MTI for 0430
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0430"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0430"'
+
+  - name: differential - describe and json agree on MTI for 0800
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0800"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: differential - describe and json agree on MTI for 0810
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "MTI..........: 0810"
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0810"'
+
+  # ---------------------------------------------------------------------------
+  # Metamorphic: view of a .hex == view of the equivalent json-converted message
+  # (convert the sample .json into a packed workdir file, then view both)
+  # ---------------------------------------------------------------------------
+  - name: metamorphic - hex and json-converted 0100 view to the same MTI
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --to hex --output packed0100.hex"
+      - assert:
+          exit_code: 0
+      - run:
+          command: "iso8583tool view packed0100.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0100"'
+
+  - name: metamorphic - hex and json-converted 0200 view to the same MTI
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0200-financial-request.json --to hex --output packed0200.hex"
+      - assert:
+          exit_code: 0
+      - run:
+          command: "iso8583tool view packed0200.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0200"'
+
+  - name: metamorphic - hex and json-converted 0810 view to the same MTI
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.json --to hex --output packed0810.hex"
+      - assert:
+          exit_code: 0
+      - run:
+          command: "iso8583tool view packed0810.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0810"'
+
+  - name: metamorphic - the json-converted 0100 message masks the PAN under view just like the original
+    steps:
+      - run:
+          command: "iso8583tool convert ${env:ISO_EXAMPLES}/basei/0100-auth-request.json --to hex --output roundtrip.hex"
+      - assert:
+          exit_code: 0
+      - run:
+          command: "iso8583tool view roundtrip.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"2": "411111******1111"'
+      - assert:
+          stdout:
+            not_contains: "4111111111111111"
+
+  # ---------------------------------------------------------------------------
+  # Per-sample decode depth: summaries, MTI meanings, decoded annotations
+  # ---------------------------------------------------------------------------
+  - name: decode - 0100 summary carries the amount, STAN and terminal id
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "JPY 5000"
+              - "STAN 123456"
+              - "TERMID01"
+
+  - name: decode - 0100 MTI annotates as an Authorization Request
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Authorization Request from Acquirer"
+
+  - name: decode - 0100 processing code annotates as a purchase
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Purchase / goods & services"
+
+  - name: decode - 0100 exposes the extension-field strategy section with the F55 TLV strategy
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Extension Field Strategy:"
+              - "F55 ICC System Related Data [tlv]"
+
+  - name: decode - 0110 response code annotates as Approved in json decoded
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0110-auth-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"meaning": "Approved"'
+
+  - name: decode - 0200 summary formats the amount as USD 123.45
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "USD 123.45"
+
+  - name: decode - 0200 MTI annotates as a Financial Request
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0200-financial-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Financial Request from Acquirer"
+
+  - name: decode - 0210 summary marks Approved with the USD amount
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Approved"
+              - "USD 123.45"
+
+  - name: decode - 0420 MTI annotates as a Reversal Advice
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Reversal Advice from Acquirer"
+
+  - name: decode - 0430 MTI annotates as a Reversal Advice response
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Reversal Advice response from Acquirer"
+
+  - name: decode - 0800 summary is an Echo test with the network terminal id
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains:
+              - "Echo test"
+              - "TERMNET1"
+
+  - name: decode - 0800 MTI annotates as a Network management Request
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Network management Request from Acquirer"
+
+  - name: decode - 0810 MTI annotates as a Network management Response
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0810-network-echo-response.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Network management Response from Acquirer"
+
+  - name: decode - 0100 json decoded array carries the processing-code meaning
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"meaning": "Purchase / goods'
+
+  - name: decode - 0210 json decoded array carries the currency meaning for F49
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0210-financial-response.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"meaning": "Approved"'
+
+  - name: decode - 0100 transmission date/time annotates in describe
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0100-auth-request.hex --no-color"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "06-04 12:34:56"
+
+  # ---------------------------------------------------------------------------
+  # stdin (cross-platform inline) parity with a positional file argument
+  # ---------------------------------------------------------------------------
+  - name: stdin - inline hex on '-' decodes to MTI 0800
+    steps:
+      - run:
+          command: "iso8583tool view - --format json"
+          stdin:
+            base64: "MzAzODMwMzAzMDMyMzMzODMwMzEzMDMwMzAzMDM4MzEzMDMwMzAzMDMwMzQzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzNjMwMzQzMTM2MzEzNjMxMzYzNjM1MzQzMzMyMzEzMTM2MzEzNjMxMzYzMDM2MzAzNDMwMzAzMTU0NDU1MjRENEU0NTU0MzEzMDMxMzU0ODQ1NDE1MjU0NDI0NTQxNTQzRDQyNDE1MzQ1NDkzMzMwMzE="
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: stdin - inline hex with the target omitted reads from stdin
+    steps:
+      - run:
+          command: "iso8583tool view --format json"
+          stdin:
+            base64: "MzAzODMwMzAzMDMyMzMzODMwMzEzMDMwMzAzMDM4MzEzMDMwMzAzMDMwMzQzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzNjMwMzQzMTM2MzEzNjMxMzYzNjM1MzQzMzMyMzEzMTM2MzEzNjMxMzYzMDM2MzAzNDMwMzAzMTU0NDU1MjRENEU0NTU0MzEzMDMxMzU0ODQ1NDE1MjU0NDI0NTQxNTQzRDQyNDE1MzQ1NDkzMzMwMzE="
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  - name: stdin - inline hex parity with a positional file yields the same MTI
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0800-network-echo.hex --format json"
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+      - run:
+          command: "iso8583tool view - --format json"
+          stdin:
+            base64: "MzAzODMwMzAzMDMyMzMzODMwMzEzMDMwMzAzMDM4MzEzMDMwMzAzMDMwMzQzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzNjMwMzQzMTM2MzEzNjMxMzYzNjM1MzQzMzMyMzEzMTM2MzEzNjMxMzYzMDM2MzAzNDMwMzAzMTU0NDU1MjRENEU0NTU0MzEzMDMxMzU0ODQ1NDE1MjU0NDI0NTQxNTQzRDQyNDE1MzQ1NDkzMzMwMzE="
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"mti": "0800"'
+
+  # ---------------------------------------------------------------------------
+  # Output capture to a workdir file (no shell redirect) + json shape assertions
+  # ---------------------------------------------------------------------------
+  - name: capture - json output written to a workdir file contains the mti key
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0420-reversal-advice.hex --format json"
+          stdout_to: view0420.json
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: view0420.json
+            contains: '"mti": "0420"'
+
+  - name: capture - describe output written to a workdir file keeps the Spec header
+    steps:
+      - run:
+          command: "iso8583tool view ${env:ISO_EXAMPLES}/basei/0430-reversal-response.hex --no-color"
+          stdout_to: view0430.txt
+      - assert:
+          exit_code: 0
+      - assert:
+          file:
+            path: view0430.txt
+            contains:
+              - "Spec: basei-starter"
+              - "Reversal Advice response from Acquirer"

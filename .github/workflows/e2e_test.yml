@@ -18,9 +18,16 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+          - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+
+    # POSIX runners use the bash bootstrap; the Windows runner uses the native
+    # PowerShell twin (run.ps1) so the native binaries get native paths.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v7
@@ -35,7 +42,15 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
         with:
-          version: v0.2.0
+          version: v0.5.1
 
-      - name: Run end-to-end tests
-        run: make e2e
+      # Call the bootstrap directly (make is not present on the Windows runner).
+      # Scenarios that need a POSIX shell are gated with skip: { os: windows }.
+      - name: Run end-to-end tests (POSIX)
+        if: runner.os != 'Windows'
+        run: ./e2e/run.sh
+
+      - name: Run end-to-end tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./e2e/run.ps1

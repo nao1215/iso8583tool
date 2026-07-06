@@ -66,9 +66,11 @@ scenarios:
 
   - name: explains a dot-path set on a plain built-in field
     steps:
+      - fixture:
+          file: dotpath.json
+          content: '{"mti":"0100","fields":{"11":"123456","48.1":"AB"}}'
       - run:
-          shell: true
-          command: 'printf "%s" "{\"mti\":\"0100\",\"fields\":{\"11\":\"123456\",\"48.1\":\"AB\"}}" | iso8583tool convert --to hex'
+          command: "iso8583tool convert dotpath.json --to hex"
       - assert:
           exit_code: { not: 0 }
           stderr:

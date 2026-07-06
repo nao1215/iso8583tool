@@ -7,12 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-06
+
 ### Changed
 
 - The end-to-end suite is now driven by [atago](https://github.com/nao1215/atago)
   (`e2e/atago/*.atago.yaml` + `e2e/run.sh`, `make e2e`) instead of shellspec;
   the specs cover the same CLI surface. The single-shot TCP mock server moved
   from `spec/mock` to `e2e/mock` (`spec/` and `.shellspec` are removed).
+- The end-to-end suite now also runs on Windows. Specs reference host
+  environment variables with atago's own `${env:NAME}` expansion and avoid a
+  POSIX shell where possible; the few scenarios that need one are gated with
+  `skip: { os: windows }`. `e2e/run.sh` honors `go env GOEXE` and the CI matrix
+  gains `windows-latest`.
+- `convert` accepts `--raw MESSAGE` for an inline message, matching
+  `view`/`redact`/`validate`/`send`.
+- The coverage gate is raised to 90% and no longer excludes `main.go`; the
+  combined unit + end-to-end run exercises the whole tree.
+
+### Fixed
+
+- The same "message will not unpack under this spec" failure now reports one
+  consistent, field-aware error across `view`, `validate`, `diff`, `redact`, and
+  `convert` (`cannot unpack field N: ... (input was M bytes)`), instead of
+  `diff`/`redact`/`convert` leaking the underlying library's raw
+  "failed to decode content" internals. Run `doctor` to find the right preset.
+- A malformed message type indicator is rejected at validation with
+  `mti must be exactly 4 digits` instead of a cryptic pack-time length error, so
+  `convert --to hex` and `send` fail clearly on a bad MTI.
+- `convert --to hex` on non-JSON input and `convert --to json` on a JSON
+  document now explain the direction mismatch instead of leaking a raw
+  JSON/hex decode error.
+- An unknown `--spec` preset name is reported as a preset typo pointing at
+  `iso8583tool specs`, not as a file that "is not JSON"; a missing `.json` spec
+  reports `spec file not found: PATH`.
+- Setting an undefined dot-path tag reports a plain sentence instead of the
+  library's internal wording.
 
 ## [0.7.0] - 2026-06-07
 
@@ -431,7 +461,8 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/nao1215/iso8583tool/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/nao1215/iso8583tool/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/nao1215/iso8583tool/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/nao1215/iso8583tool/compare/v0.5.0...v0.5.1
