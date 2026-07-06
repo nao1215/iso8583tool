@@ -23,8 +23,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
 
-    # Run every step through bash so the single e2e/run.sh bootstrap works
-    # identically on all three runners (Git Bash ships on the Windows runner).
+    # POSIX runners use the bash bootstrap; the Windows runner uses the native
+    # PowerShell twin (run.ps1) so the native binaries get native paths.
     defaults:
       run:
         shell: bash
@@ -46,5 +46,11 @@ jobs:
 
       # Call the bootstrap directly (make is not present on the Windows runner).
       # Scenarios that need a POSIX shell are gated with skip: { os: windows }.
-      - name: Run end-to-end tests
+      - name: Run end-to-end tests (POSIX)
+        if: runner.os != 'Windows'
         run: ./e2e/run.sh
+
+      - name: Run end-to-end tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./e2e/run.ps1
