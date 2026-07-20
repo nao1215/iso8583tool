@@ -6,8 +6,8 @@
 [![reviewdog](https://github.com/nao1215/iso8583tool/actions/workflows/reviewdog.yml/badge.svg)](https://github.com/nao1215/iso8583tool/actions/workflows/reviewdog.yml)
 [![Coverage](./docs/coverage.svg)](https://github.com/nao1215/iso8583tool/actions/workflows/coverage.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nao1215/iso8583tool.svg)](https://pkg.go.dev/github.com/nao1215/iso8583tool)
-[![Go Report Card](https://goreportcard.com/badge/github.com/nao1215/iso8583tool)](https://goreportcard.com/report/github.com/nao1215/iso8583tool)
 ![GitHub](https://img.shields.io/github/license/nao1215/iso8583tool)
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/nao1215/iso8583tool/total)](https://github.com/nao1215/iso8583tool/releases)
 
 A command-line tool for debugging and inspecting ISO 8583 payment messages.
 
