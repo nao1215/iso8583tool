@@ -42,7 +42,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
         with:
-          version: v0.16.0
+          version: v0.17.0
 
       # Call the bootstrap directly (make is not present on the Windows runner).
       # Scenarios that need a POSIX shell are gated with skip: { os: windows }.
