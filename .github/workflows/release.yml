@@ -22,9 +22,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version-file: "go.mod"
+          go-version: "stable"
 
       - name: Run unit tests
         run: go test ./...
@@ -37,7 +37,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
         with:
-          version: v0.20.0
+          version: v0.21.0
 
       - name: Build
         run: make build
@@ -60,9 +60,9 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version-file: "go.mod"
+          go-version: "stable"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7

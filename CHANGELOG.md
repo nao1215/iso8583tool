@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped `github.com/moov-io/iso8583` 0.26.0 to 0.26.1 and `golang.org/x/text`, and moved every workflow to `actions/setup-go@v7`. The `go` directive stays at 1.25.0.
+- The end-to-end suite runs against atago v0.21.0.
+- The unit-test matrix ceiling is `stable` instead of a pinned 1.26, so it tracks each Go release; every non-test job builds with the current stable toolchain rather than the go.mod floor.
+
+### Tests
+
+- The five VHS tapes behind the documentation GIFs are covered by a test that replays the commands each one types and pins its output path, so a renamed subcommand fails CI instead of being recorded into the next demo.
+
 ## [0.8.0] - 2026-07-06
 
 ### Changed

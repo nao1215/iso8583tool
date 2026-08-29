@@ -24,9 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version-file: "go.mod"
+          go-version: "stable"
           check-latest: true
 
       # The combined coverage runs the atago E2E suite against a `go build -cover`
@@ -34,7 +34,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
         with:
-          version: v0.20.0
+          version: v0.21.0
 
       # Combines unit-test coverage with self-hosted E2E coverage (E2E runs a
       # `go build -cover` iso8583tool and collects covdata via GOCOVERDIR), then
