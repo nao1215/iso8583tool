@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,14 @@ var skippedTapes = map[string]string{
 // fails here, instead of the next `make demo` quietly recording five terminals
 // full of usage errors -- `vhs` exits 0 no matter what appears on screen.
 func TestDemoTapesStillWork(t *testing.T) { //nolint:paralleltest // the tapes share the /tmp fixtures the Makefile's demo target writes, so the cases run sequentially
+	// The tapes are rendered on Linux by `make demo` and name POSIX paths
+	// (/tmp/before.hex, /tmp/after.hex) literally, so replaying them elsewhere
+	// would be testing the path syntax rather than the demo. The commands
+	// themselves are covered on every platform by e2e/atago.
+	if runtime.GOOS == "windows" {
+		t.Skip("the tapes hardcode POSIX /tmp paths and are rendered on Linux")
+	}
+
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not available; the tapes declare `Set Shell bash`")
