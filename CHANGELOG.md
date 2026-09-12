@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Bumped `github.com/moov-io/iso8583` 0.26.0 to 0.26.1 and `golang.org/x/text`, and moved every workflow to `actions/setup-go@v7`. The `go` directive stays at 1.25.0.
-- The end-to-end suite runs against atago v0.21.0.
+- The end-to-end suite runs against atago v0.22.0. The 705 scenarios were run locally against it before the pin moved.
+- `github.com/stretchr/testify` 1.12.1 on 2026-09-12. The golang.org/x updates are not taken: that family now declares `go 1.26.0` and the floor here is 1.25.0.
 - The unit-test matrix ceiling is `stable` instead of a pinned 1.26, so it tracks each Go release; every non-test job builds with the current stable toolchain rather than the go.mod floor.
 
 ### Tests
