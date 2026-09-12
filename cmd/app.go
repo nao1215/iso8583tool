@@ -163,8 +163,7 @@ func (a *App) runView(args []string) int {
 	}
 	target := flagSet.Arg(0)
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 
 	mode, err := resolveColorMode(*color, *noColor)
@@ -250,7 +249,14 @@ func (a *App) runDiff(args []string) int {
 	if code, ok := a.parseFlags(flagSet, args); !ok {
 		return code
 	}
-	if flagSet.NArg() != 2 {
+	if flagSet.NArg() > 2 {
+		return a.tooManyArgs(flagSet, 2)
+	}
+	if flagSet.NArg() < 2 {
+		// diff is the only subcommand that requires two positional arguments,
+		// so it is the only one where "not enough" is a mistake of its own
+		// rather than the absence of an optional argument.
+		writef(a.stderr, "diff takes two messages (BEFORE and AFTER), got %d\n", flagSet.NArg())
 		flagSet.Usage()
 		return 1
 	}
@@ -386,8 +392,7 @@ func (a *App) runRedact(args []string) int {
 	}
 	target := flagSet.Arg(0)
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 
 	mode, err := resolveColorMode(*color, *noColor)
@@ -487,8 +492,7 @@ func (a *App) runConvert(args []string) int {
 	}
 	target := flagSet.Arg(0)
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 
 	ctx, err := a.loadContext(*specName, *configPath)
@@ -649,7 +653,10 @@ func (a *App) runSend(args []string) int {
 		return code
 	}
 	address := strings.TrimSpace(flagSet.Arg(0))
-	if address == "" || flagSet.NArg() > 2 {
+	if flagSet.NArg() > 2 {
+		return a.tooManyArgs(flagSet, 2)
+	}
+	if address == "" {
 		flagSet.Usage()
 		return 1
 	}
@@ -1001,8 +1008,7 @@ func (a *App) runValidate(args []string) int {
 	}
 	target := flagSet.Arg(0)
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 
 	mode, err := resolveColorMode(*color, *noColor)
@@ -1065,8 +1071,7 @@ func (a *App) runDoctor(args []string) int {
 	}
 	target := flagSet.Arg(0)
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 
 	mode, err := resolveColorMode(*color, *noColor)
@@ -1314,8 +1319,7 @@ func (a *App) runSpecs(args []string) int {
 		return code
 	}
 	if flagSet.NArg() > 0 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 0)
 	}
 
 	presets := basei.Presets()
@@ -1379,8 +1383,7 @@ func (a *App) runSample(args []string) int {
 		return code
 	}
 	if flagSet.NArg() > 1 {
-		flagSet.Usage()
-		return 1
+		return a.tooManyArgs(flagSet, 1)
 	}
 	name := flagSet.Arg(0)
 
@@ -1741,6 +1744,21 @@ func (a *App) parseFlags(flagSet *flag.FlagSet, args []string) (int, bool) {
 		return 0, false
 	}
 	return parseArgs(flagSet, reorderArgs(flagSet, args))
+}
+
+// tooManyArgs refuses a subcommand handed more positional arguments than it
+// takes, naming the first one it did not expect before printing the usage
+// block. want is how many positional arguments the subcommand accepts, so
+// Arg(want) is the first extra one.
+//
+// The usage block alone (#58) left the reader counting arguments in the Usage
+// line to work out what was wrong, which is not how the rest of this tool
+// refuses anything: `unknown sample "x"` and `mti must be exactly 4 digits, got
+// "010"` both name what they saw.
+func (a *App) tooManyArgs(flagSet *flag.FlagSet, want int) int {
+	writef(a.stderr, "too many arguments: unexpected %q\n", flagSet.Arg(want))
+	flagSet.Usage()
+	return 1
 }
 
 func printFlagDefaults(w io.Writer, flagSet *flag.FlagSet) {
