@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-12
+
 ### Fixed
 
 - A subcommand handed more positional arguments than it takes says which one it did not expect. `iso8583tool convert a b` exited 1 with the usage block and nothing else, leaving the reader to count arguments in the Usage line — while every other refusal in this tool names what it saw (`unknown sample "x"`, `mti must be exactly 4 digits, got "010"`). All nine guards now print `too many arguments: unexpected "b"` first. `diff`, the one subcommand that requires two messages rather than accepting an optional one, gains the other half of its rule as its own sentence: too few arguments says how many it takes and how many arrived, where a single `NArg() != 2` guard had answered both mistakes with the same silent block.
