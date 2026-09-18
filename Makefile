@@ -1,4 +1,4 @@
-.PHONY: build test coverage e2e lint tools demo clean help
+.PHONY: build test coverage e2e lint bench bench-compare tools demo clean help
 
 APP        = iso8583tool
 VERSION    = $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
@@ -26,10 +26,17 @@ e2e: ## Run atago end-to-end tests against the freshly built binary
 lint: ## Run golangci-lint
 	golangci-lint run --config .golangci.yml
 
+bench: ## Measure iso8583tool with the himorime suite in bench/ (requires himorime on PATH)
+	himorime run bench
+
+bench-compare: ## Compare main with the working tree on the himorime suite (BASE=main)
+	himorime compare --against $${BASE:-main} bench
+
 tools: ## Install developer tools (linter, coverage, atago for e2e)
 	$(GO_INSTALL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	$(GO_INSTALL) github.com/k1LoW/octocov@latest
 	$(GO_INSTALL) github.com/nao1215/atago@latest
+	$(GO_INSTALL) github.com/nao1215/himorime@latest
 
 demo: build ## Regenerate the README GIF from docs/demo.tape (needs vhs)
 	@command -v vhs >/dev/null || { echo 'vhs is required: go install github.com/charmbracelet/vhs@latest'; exit 1; }
