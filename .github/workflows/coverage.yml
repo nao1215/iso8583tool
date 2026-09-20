@@ -32,7 +32,7 @@ jobs:
       # The combined coverage runs the atago E2E suite against a `go build -cover`
       # binary, so atago must be on PATH (same pinned action the E2E workflow uses).
       - name: Install atago
-        uses: nao1215/setup-atago@e4b6719aea547a68e6c15252222babab7f492a88 # v0.1.1
+        uses: nao1215/setup-atago@7cae89595fcbba334db0fe16fc9a24ed5b0a3fea # v0.1.2
         with:
           version: v0.22.0
 
