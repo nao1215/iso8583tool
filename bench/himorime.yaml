@@ -22,9 +22,8 @@
 # no larger size, so no benchmark declares a throughput.
 version: "1"
 
-suite:
-  name: iso8583tool
-  description: Start-up, and view, diff, redact, convert, validate, doctor and send --dry-run on messages of 10 and 124 fields.
+name: iso8583tool
+description: Start-up, and view, diff, redact, convert, validate, doctor and send --dry-run on messages of 10 and 124 fields.
 
 build:
   command: [go, build, -trimpath, -o, "${artifact}", .]
@@ -50,10 +49,10 @@ defaults:
     latency:
       max_percent: 10
       min_difference: 1ms
-    cpu:
+    cpu_total:
       max_percent: 15
       min_difference: 2ms
-    memory:
+    peak_rss:
       max_percent: 15
       min_difference: 2MiB
 
