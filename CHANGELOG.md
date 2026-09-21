@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Building from source now needs Go 1.26 or later (was 1.25). golang.org/x/text v0.42.0, which this update takes, declares `go 1.26.0`, and Go 1.26 and 1.27 are the two releases the Go team still supports. Prebuilt binaries are unaffected.
+
 ## [0.8.1] - 2026-09-12
 
 ### Fixed
