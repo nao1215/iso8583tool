@@ -97,11 +97,9 @@ func ViewMessage(raw []byte, spec *iso8583.MessageSpec, catalog basei.ExtensionC
 	switch format {
 	case "", "describe", "text":
 		var buf bytes.Buffer
-		describeFilters := safeDescribeFilters(msg)
-		if unsafe {
-			describeFilters = iso8583.DoNotFilterFields()
-		}
-		if err := iso8583.Describe(msg, &buf, describeFilters...); err != nil {
+		// --unsafe keeps moov's own value text (no canonical padding) but is
+		// still quoted, so a control byte cannot break the layout either way.
+		if err := iso8583.Describe(msg, &buf, describeFilters(msg, !unsafe)...); err != nil {
 			return ViewResult{}, err
 		}
 		body := buf.String()
@@ -350,18 +348,20 @@ func renderFiltered(msg *iso8583.Message, doc messageio.Document, filters []stri
 
 	var b strings.Builder
 	if mtiSelected {
-		line := pal.Green("MTI") + ": " + pal.Yellow(mtiEntry.Value)
+		line := pal.Green("MTI") + ": " + pal.Yellow(render.SanitizeControl(mtiEntry.Value))
 		if mtiEntry.Meaning != "" {
 			line += "  " + pal.Cyan("→ "+mtiEntry.Meaning)
 		}
 		b.WriteString(line + "\n")
 	}
 	for _, m := range matched {
-		label := pal.Green("F" + m.Path)
+		label := pal.Green("F" + render.SanitizeControl(m.Path))
 		if m.Description != "" {
-			label += " " + m.Description
+			label += " " + render.SanitizeControl(m.Description)
 		}
-		line := label + ": " + pal.Yellow(m.Value)
+		// Escape control bytes after masking, as the unfiltered describe view
+		// does, so a filtered text view is as terminal-safe as the full one.
+		line := label + ": " + pal.Yellow(render.SanitizeControl(m.Value))
 		if m.Meaning != "" {
 			line += "  " + pal.Cyan("→ "+m.Meaning)
 		}
@@ -532,7 +532,7 @@ func colorizeDescribe(plain string, pal render.Palette, mask func(path, value st
 			out = append(out, colorizeKeyValue(line, pal, pal.Green))
 		case strings.HasPrefix(line, "MTI"):
 			out = append(out, colorizeMTILine(line, pal))
-		case strings.HasPrefix(line, "F") && strings.Contains(line, "SUBFIELDS:"):
+		case strings.HasPrefix(line, "F") && strings.HasSuffix(line, " SUBFIELDS:"):
 			fullPath := fieldID(line)
 			if len(stack) > 0 {
 				fullPath = strings.Join(stack, ".") + "." + fullPath
@@ -543,7 +543,9 @@ func colorizeDescribe(plain string, pal render.Palette, mask func(path, value st
 		case strings.HasPrefix(line, "F") && strings.Contains(line, ": "):
 			out = append(out, colorizeFieldLine(line, strings.Join(stack, "."), pal, mask))
 		default:
-			out = append(out, line)
+			// Bitmap rows and moov's unpacking-error list; escape them too, since
+			// an error message can quote the bytes it failed on.
+			out = append(out, render.SanitizeControl(line))
 		}
 	}
 	return strings.Join(out, "\n")
@@ -594,7 +596,8 @@ func colorizeMTILine(line string, pal render.Palette) string {
 	}
 	key := line[:idx]
 	value := strings.TrimSpace(line[idx+2:])
-	rendered := pal.Dim(key) + ": " + pal.BoldGreen(value)
+	// moov prints the MTI unfiltered, and an ASCII MTI can hold any byte.
+	rendered := pal.Dim(key) + ": " + pal.BoldGreen(render.SanitizeControl(value))
 	if meaning := annotate.MTI(value); meaning != "" {
 		rendered += "  " + pal.Cyan("→ "+meaning)
 	}
@@ -602,12 +605,11 @@ func colorizeMTILine(line string, pal render.Palette) string {
 }
 
 func colorizeFieldLine(line, parentPrefix string, pal render.Palette, mask func(path, value string) string) string {
-	idx := strings.Index(line, ": ")
-	if idx < 0 {
-		return line
+	label, value, _, ok := splitDescribeField(line)
+	if !ok {
+		return render.SanitizeControl(line)
 	}
-	label := line[:idx]
-	value := line[idx+2:]
+	label = render.SanitizeControl(label)
 
 	id := fieldID(label)
 	path := id
@@ -641,6 +643,31 @@ func colorizeFieldLine(line, parentPrefix string, pal render.Palette, mask func(
 		rendered += "  " + pal.Cyan("→ "+meaning)
 	}
 	return rendered
+}
+
+// splitDescribeField splits a moov describe field line ("F2 <desc>..: value")
+// into its label and value. describeFilters prints every value Go-quoted, so
+// the value is the quoted literal that ends the line, found at the first ": "
+// whose remainder unquotes cleanly (a ": " inside the description or inside
+// the escaped value cannot match). quoted reports whether the value was
+// unquoted; a line from an unfiltered describe falls back to the first ": ".
+func splitDescribeField(line string) (label, value string, quoted, ok bool) {
+	for i := 0; ; {
+		idx := strings.Index(line[i:], ": ")
+		if idx < 0 {
+			break
+		}
+		idx += i
+		if v, err := strconv.Unquote(line[idx+2:]); err == nil {
+			return line[:idx], v, true, true
+		}
+		i = idx + 2
+	}
+	idx := strings.Index(line, ": ")
+	if idx < 0 {
+		return "", "", false, false
+	}
+	return line[:idx], line[idx+2:], false, true
 }
 
 // trimTrailingDots removes up to n trailing '.' runes from s.

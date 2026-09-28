@@ -84,3 +84,57 @@ scenarios:
       - assert:
           stdout:
             contains: "^["
+
+  - name: view --filter escapes control bytes
+    steps:
+      - fixture: *bin41
+      - fixture: *msgesc
+      - run:
+          command: iso8583tool convert esc.json --to hex --spec bin41.json --output a.hex
+      - run:
+          command: iso8583tool view a.hex --no-color --filter 41
+      - assert:
+          exit_code: 0
+          stdout:
+            not_contains: "\x1b"
+      - assert:
+          stdout:
+            contains: "F41 Card Acceptor Terminal Identification: ^[[2J"
+
+  # A PAN carrying a newline stays on its describe field line: it is masked as
+  # one value (as the JSON view masks it) and then escaped, so no part of it is
+  # printed as a line of its own outside the mask.
+  - name: view keeps a PAN with a newline masked on one line
+    steps:
+      - fixture: &msgnl
+          file: nl.json
+          content: '{"mti":"0100","fields":{"2":"411111\n111111111111","11":"123456"}}'
+      - run:
+          command: iso8583tool convert nl.json --to hex --output nl.hex
+      - run:
+          command: iso8583tool view nl.hex --no-color
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Primary Account Number.............: 411111*********1111"
+      - assert:
+          stdout:
+            not_contains: "111111111111"
+      - run:
+          command: iso8583tool view nl.hex --format json
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: '"2": "411111*********1111"'
+
+  - name: view --unsafe escapes a newline in the PAN
+    steps:
+      - fixture: *msgnl
+      - run:
+          command: iso8583tool convert nl.json --to hex --output nl.hex
+      - run:
+          command: iso8583tool view nl.hex --no-color --unsafe
+      - assert:
+          exit_code: 0
+          stdout:
+            contains: "Primary Account Number.............: 411111^J111111111111"

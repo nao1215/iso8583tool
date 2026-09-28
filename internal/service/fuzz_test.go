@@ -141,9 +141,13 @@ func without55(d messageio.Document) messageio.Document {
 }
 
 // FuzzViewNeverLeaksPAN asserts the describe view masks each cardholder field
-// exactly as the canonical mask functions do. Checking equality against the
-// expected mask (rather than substring presence of the raw value) avoids false
-// positives when a value coincidentally equals its own masked form.
+// exactly as the canonical mask functions do, then escapes control bytes for
+// the terminal (render.SanitizeControl) — the same order the view applies, so
+// an escaped byte is compared as the caret form the reader sees. Checking
+// equality against the expected mask (rather than substring presence of the
+// raw value) avoids false positives when a value coincidentally equals its own
+// masked form. A value with a newline or tab must still render on its one
+// field line, so no value is skipped.
 func FuzzViewNeverLeaksPAN(f *testing.F) {
 	spec := basei.StarterMessageSpec()
 	for _, seed := range fuzzSeeds(f) {
@@ -165,12 +169,13 @@ func FuzzViewNeverLeaksPAN(f *testing.F) {
 		}
 		for id, mask := range maskFor {
 			raw, ok := canon.Fields[id]
-			if !ok || strings.ContainsAny(raw, "\r\n") {
-				continue // a value with newlines cannot be matched on one describe line
+			if !ok {
+				continue
 			}
+			want := render.SanitizeControl(mask(raw))
 			shown, found := describeFieldValue(res.Body, id)
-			if found && shown != mask(raw) {
-				t.Fatalf("describe masking mismatch for field %s: shown %q, expected %q (raw %q)", id, shown, mask(raw), raw)
+			if found && shown != want {
+				t.Fatalf("describe masking mismatch for field %s: shown %q, expected %q (raw %q)", id, shown, want, raw)
 			}
 		}
 	})

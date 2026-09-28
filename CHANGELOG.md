@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `view` no longer prints part of a PAN in the clear when the field carries a newline. The describe layout split such a value across lines, masked only the part before the newline as a short PAN, and printed the rest (for example 12 digits of `411111\n111111111111`) as a line of its own. A tab, vertical tab, or form feed broke the value into tabwriter cells the same way. Each value now stays on its field line, is masked as one value exactly as `--format json` masks it, and is then escaped, so the example shows `411111*********1111`.
+- `view --filter` escapes control bytes like every other text view (`view`, `validate`, `diff`, `redact --format text`) instead of writing a field's raw ESC sequence to the terminal, and the describe view escapes the MTI line, which it printed unfiltered. The escaping now also covers C1 controls such as CSI (U+009B) and bytes that are not valid UTF-8, shown the way `cat -v` shows them (`M-^[`, `M-^?`), since an 8-bit terminal reads a lone 0x9B byte as CSI.
+
 ### Changed
 
 - Release artifacts are now signed and ship with SLSA build provenance: `checksums.txt` gets a keyless cosign bundle (`checksums.txt.sigstore.json`), and every release carries `multiple.intoto.jsonl`, which `slsa-verifier verify-artifact` checks against the downloaded archive.
