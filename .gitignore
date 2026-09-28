@@ -47,3 +47,6 @@ doc/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# `goreleaser release --snapshot` output
+/dist/
