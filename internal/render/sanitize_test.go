@@ -13,6 +13,13 @@ func TestSanitizeControl(t *testing.T) {
 		{"nul", "\x00", "^@"},
 		{"del", "\x7f", "^?"},
 		{"mixed", "A\x1bB", "A^[B"},
+		{"newline and tab", "A\nB\tC\r", "A^JB^IC^M"},
+		{"c1 csi rune", "A\u009b2J", "AM-^[2J"},
+		{"c1 nel rune", "\u0085", "M-^E"},
+		{"lone csi byte", "A\x9b2J", "AM-^[2J"},
+		{"invalid utf8 byte", "\xffA\xe9", "M-^?AM-i"},
+		{"truncated utf8 sequence", "\xc3", "M-C"},
+		{"printable latin1 rune kept", "caf\u00e9 \u00a0", "caf\u00e9 \u00a0"},
 		{"empty", "", ""},
 	}
 	for _, tc := range cases {

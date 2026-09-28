@@ -171,26 +171,56 @@ func binaryEmbedsSensitive(hexValue string) bool {
 	return maskEmbeddedSensitive(s) != s
 }
 
-// safeDescribeFilters returns moov Describe filters that normalize each present
-// primitive field to its canonical (zero-padded) width, so the describe output
-// shows the same width as the JSON and filtered views — moov's describe prints
+// describeFilters returns moov Describe filters, one for every field id present
+// at any composite level, that print each primitive value as a Go-quoted
+// string. moov lays the describe output out with a tabwriter and one line per
+// field, so a raw newline, tab, vertical tab, or form feed in a value would
+// split it across lines or cells; an unmasked tail would then be printed as a
+// line colorizeDescribe does not recognize as a field. Quoting keeps every
+// value on its field line, and colorizeFieldLine unquotes it before masking and
+// escaping.
+//
+// With canonicalize set, each value (except the MTI and bitmap) is also
+// normalized to its canonical (zero-padded) width, so the describe output shows
+// the same width as the JSON and filtered views — moov's describe prints
 // field.String(), which drops a fixed-length field's padding.
 //
 // Sensitive masking is NOT done here. moov applies a filter keyed by a field's
 // id at every composite level, so a top-level mask for PAN field 2 would also
 // hit an unrelated composite subfield keyed "2". Masking is instead applied
 // per dot-path in colorizeDescribe, where the full path is known.
-func safeDescribeFilters(msg *iso8583.Message) []iso8583.FieldFilter {
-	canonical := func(in string, f field.Field) string { return canonicalFieldValue(f, in) }
+func describeFilters(msg *iso8583.Message, canonicalize bool) []iso8583.FieldFilter {
+	quote := func(in string, _ field.Field) string { return strconv.Quote(in) }
+	canonicalQuote := func(in string, f field.Field) string { return strconv.Quote(canonicalFieldValue(f, in)) }
 
-	var filters []iso8583.FieldFilter
-	for id := range msg.GetFields() {
-		if id == 0 || id == 1 { // MTI and bitmap are rendered separately
-			continue
+	ids := map[string]bool{}
+	for id, f := range msg.GetFields() {
+		ids[strconv.Itoa(id)] = true
+		collectSubfieldIDs(f, ids)
+	}
+	filters := make([]iso8583.FieldFilter, 0, len(ids))
+	for id := range ids {
+		fn := quote
+		if canonicalize && id != "0" && id != "1" { // MTI and bitmap are rendered as-is
+			fn = canonicalQuote
 		}
-		filters = append(filters, iso8583.FilterField(strconv.Itoa(id), canonical))
+		filters = append(filters, iso8583.FilterField(id, fn))
 	}
 	return filters
+}
+
+// collectSubfieldIDs adds the id of every subfield of f, at any depth, to ids.
+func collectSubfieldIDs(f field.Field, ids map[string]bool) {
+	container, ok := f.(interface {
+		GetSubfields() map[string]field.Field
+	})
+	if !ok {
+		return
+	}
+	for id, sub := range container.GetSubfields() {
+		ids[id] = true
+		collectSubfieldIDs(sub, ids)
+	}
 }
 
 // cardholderEMVTags are TLV tags that carry the PAN, track, or PIN in EMV form
@@ -392,12 +422,15 @@ func maskUnknownInText(body string, tags []UnknownTag) string {
 		if !strings.Contains(line, marker) {
 			continue
 		}
-		idx := strings.LastIndex(line, ": ")
-		if idx < 0 {
+		label, value, quoted, ok := splitDescribeField(line)
+		if !ok {
 			continue
 		}
-		prefix, value := line[:idx+2], line[idx+2:]
-		lines[i] = prefix + maskAll(value)
+		masked := maskAll(value)
+		if quoted {
+			masked = strconv.Quote(masked)
+		}
+		lines[i] = label + ": " + masked
 	}
 	return strings.Join(lines, "\n")
 }
