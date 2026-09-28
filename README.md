@@ -10,6 +10,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/nao1215/iso8583tool.svg)](https://pkg.go.dev/github.com/nao1215/iso8583tool)
 ![GitHub](https://img.shields.io/github/license/nao1215/iso8583tool)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/nao1215/iso8583tool/total)](https://github.com/nao1215/iso8583tool/releases)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nao1215/iso8583tool/badge)](https://scorecard.dev/viewer/?uri=github.com/nao1215/iso8583tool)
 
 A command-line tool for debugging and inspecting ISO 8583 payment messages.
 
