@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-28
+
 ### Fixed
 
 - `view` no longer prints part of a PAN in the clear when the field carries a newline. The describe layout split such a value across lines, masked only the part before the newline as a short PAN, and printed the rest (for example 12 digits of `411111\n111111111111`) as a line of its own. A tab, vertical tab, or form feed broke the value into tabwriter cells the same way. Each value now stays on its field line, is masked as one value exactly as `--format json` masks it, and is then escaped, so the example shows `411111*********1111`.
@@ -495,7 +497,10 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/nao1215/iso8583tool/compare/v0.8.2...v0.8.3
+[0.8.2]: https://github.com/nao1215/iso8583tool/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/nao1215/iso8583tool/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/nao1215/iso8583tool/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/nao1215/iso8583tool/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/nao1215/iso8583tool/compare/v0.5.1...v0.6.0
