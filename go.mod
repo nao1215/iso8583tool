@@ -1,6 +1,6 @@
 module github.com/nao1215/iso8583tool
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/moov-io/iso8583 v0.26.1

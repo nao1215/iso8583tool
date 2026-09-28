@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Release artifacts are now signed and ship with SLSA build provenance: `checksums.txt` gets a keyless cosign bundle (`checksums.txt.sigstore.json`), and every release carries `multiple.intoto.jsonl`, which `slsa-verifier verify-artifact` checks against the downloaded archive.
+- The `go` directive moves from 1.26.0 to 1.26.3. govulncheck reports GO-2026-4971 in the `net` package as reachable under Go 1.26.0, and 1.26.3 is the first 1.26 release with the fix. Prebuilt binaries are unaffected.
 
 ## [0.8.2] - 2026-09-21
 
