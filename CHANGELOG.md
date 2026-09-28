@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Release artifacts are now signed and ship with SLSA build provenance: `checksums.txt` gets a keyless cosign bundle (`checksums.txt.sigstore.json`), and every release carries `multiple.intoto.jsonl`, which `slsa-verifier verify-artifact` checks against the downloaded archive.
+
 ## [0.8.2] - 2026-09-21
 
 ### Changed
