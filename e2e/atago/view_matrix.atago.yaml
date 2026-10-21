@@ -321,7 +321,7 @@ scenarios:
       - assert:
           exit_code: 0
           stdout:
-            matches: "\\["
+            matches: "\e\\["
 
   - name: color - invalid --color value exits 1 (invalid --color)
     steps:

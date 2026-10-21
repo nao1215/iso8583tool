@@ -50,3 +50,4 @@ doc/
 
 # `goreleaser release --snapshot` output
 /dist/
+/third_party_licenses/
