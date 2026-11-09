@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Dependencies: moov-io/iso8583 v0.26.2.
+- Dependencies: moov-io/iso8583 v0.26.2, golang.org/x/text v0.43.0.
+- Release archives now include the license texts of the linked dependencies under THIRD_PARTY_LICENSES/. CI checks dependency licenses on Linux, Windows, and macOS.
 
 ## [0.8.3] - 2026-09-28
 
