@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-09
+
 ### Changed
 
 - Dependencies: moov-io/iso8583 v0.26.2, golang.org/x/text v0.43.0.
+- The prebuilt binaries are built with Go 1.27.3. The v0.8.3 binaries were built with Go 1.27.1, before the standard library fixes released with Go 1.27.2 and 1.27.3, such as GO-2026-6617 in `net/http` and GO-2026-6809 in `crypto/x509`.
 - Release archives now include the license texts of the linked dependencies under THIRD_PARTY_LICENSES/. CI checks dependency licenses on Linux, Windows, and macOS.
 
 ## [0.8.3] - 2026-09-28
@@ -502,7 +505,8 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/nao1215/iso8583tool/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/nao1215/iso8583tool/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/nao1215/iso8583tool/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/nao1215/iso8583tool/compare/v0.8.0...v0.8.1
