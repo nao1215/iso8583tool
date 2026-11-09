@@ -731,7 +731,6 @@ func TestReorderEndOfOptions(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // uses t.Chdir, which forbids t.Parallel()
 func TestEndOfOptionsDashFilename(t *testing.T) {
 	_, hexData, _ := runApp("", "sample", "0110-auth-response", "--format", "hex")
 
