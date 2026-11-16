@@ -63,7 +63,7 @@ func (f Framing) Encode(payload []byte) ([]byte, error) {
 			return nil, fmt.Errorf("message of %d bytes is too large for 2byte-binary framing (max 65535)", len(payload))
 		}
 		header := make([]byte, 2)
-		binary.BigEndian.PutUint16(header, uint16(len(payload))) //nolint:gosec // length is bounded to <= 0xFFFF above
+		binary.BigEndian.PutUint16(header, uint16(len(payload))) // #nosec G115 -- length is bounded to <= 0xFFFF above
 		return append(header, payload...), nil
 	case Framing4DigitASCII:
 		if len(payload) > 9999 {
