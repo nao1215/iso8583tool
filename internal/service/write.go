@@ -235,7 +235,7 @@ func encodeBERLength(n int) []byte {
 		n >>= 8
 	}
 	// b holds at most 8 length bytes, so 0x80|len(b) is always one byte.
-	lengthPrefix := byte(0x80 | (len(b) & 0x7f)) //nolint:gosec // len(b) <= 8, value fits in a byte
+	lengthPrefix := byte(0x80 | (len(b) & 0x7f)) // #nosec G115 -- len(b) <= 8, value fits in a byte
 	return append([]byte{lengthPrefix}, b...)
 }
 
