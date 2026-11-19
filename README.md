@@ -608,6 +608,7 @@ iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-o
 | [Metamorphic relations](./internal/service/metamorphic_test.go) | Masking that is not idempotent, presets that read a message differently |
 | [Differential tests against mofax/iso8583](./internal/service/differential_test.go) | Wrong field lengths in the 1987 table, packing that another implementation reads differently |
 | [Fuzzing](./internal/service/fuzz_test.go) | Crashes and PAN leaks on malformed messages |
+| [Mutation testing](./.github/workflows/mutation.yml) | Conditions the tests run but do not check (82.35% efficacy on 2026-11-19) |
 | [Paired CI benchmarks](./bench/himorime.yaml) | Commands that got slower or use more memory |
 
 Commands and details: [docs/testing.md](./docs/testing.md).
