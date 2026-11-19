@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,44 @@ func runApp(stdin string, args ...string) (code int, stdout, stderr string) {
 	app := NewApp(&out, &errBuf, strings.NewReader(stdin), ".")
 	code = app.Run(args)
 	return code, out.String(), errBuf.String()
+}
+
+// failingWriter refuses every write, like a stdout redirected to /dev/full.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("no space left on device") }
+
+func TestRunFailsWhenOutputCannotBeWritten(t *testing.T) {
+	t.Parallel()
+	args := []string{"view", example("0110-auth-response.hex")}
+
+	t.Run("a lost stdout exits 1 and says so on stderr", func(t *testing.T) {
+		t.Parallel()
+		var errBuf bytes.Buffer
+		code := NewApp(failingWriter{}, &errBuf, strings.NewReader(""), ".").Run(args)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if want := "iso8583tool: write stdout: no space left on device\n"; errBuf.String() != want {
+			t.Fatalf("stderr = %q, want %q", errBuf.String(), want)
+		}
+	})
+
+	t.Run("with stderr lost too the exit code is still 1", func(t *testing.T) {
+		t.Parallel()
+		code := NewApp(failingWriter{}, failingWriter{}, strings.NewReader(""), ".").Run(args)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+	})
+
+	t.Run("an error exit keeps its own code", func(t *testing.T) {
+		t.Parallel()
+		code := NewApp(failingWriter{}, failingWriter{}, strings.NewReader(""), ".").Run([]string{"view", "no-such-file.hex"})
+		if code == 0 {
+			t.Fatal("exit code = 0, want non-zero")
+		}
+	})
 }
 
 func TestVersionAndHelp(t *testing.T) {
@@ -648,7 +687,9 @@ func TestConfigOverride(t *testing.T) {
 	}
 
 	bad := filepath.Join(t.TempDir(), "bad.json")
-	_ = os.WriteFile(bad, []byte(`{"extensions":[{"id":1,"strategy":"nope"}]}`), 0o600)
+	if err := os.WriteFile(bad, []byte(`{"extensions":[{"id":1,"strategy":"nope"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if code, _, errOut := runApp("", "view", example("0110-auth-response.hex"), "--config", bad); code != 1 || !strings.Contains(errOut, "strategy") {
 		t.Fatalf("bad config should fail: code=%d err=%q", code, errOut)
 	}

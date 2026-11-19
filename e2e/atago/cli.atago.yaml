@@ -84,3 +84,27 @@ scenarios:
           exit_code: { not: 0 }
           stderr:
             contains: "takes no arguments"
+
+  - name: a version that cannot be written to stdout exits 1 and says so
+    only:
+      os: linux  # /dev/full is Linux's
+    steps:
+      - run:
+          command: iso8583tool version > /dev/full
+          shell: true
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "iso8583tool: write stdout:"
+
+  - name: a sample that cannot be written to stdout exits 1
+    only:
+      os: linux  # /dev/full is Linux's
+    steps:
+      - run:
+          command: iso8583tool sample 0100-auth-request > /dev/full
+          shell: true
+      - assert:
+          exit_code: 1
+          stderr:
+            contains: "no space left on device"

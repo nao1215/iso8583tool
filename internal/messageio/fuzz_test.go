@@ -1,6 +1,7 @@
 package messageio
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -73,9 +74,15 @@ func FuzzDecodeInput(f *testing.F) {
 	for _, seed := range []string{"3031", "  30 31  ", "zzzz", "", "\xef\xbb\xbf3031"} {
 		f.Add([]byte(seed))
 	}
-	f.Fuzz(func(_ *testing.T, data []byte) {
+	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, enc := range []string{"hex", "raw", ""} {
-			_, _ = DecodeInput(data, enc)
+			got, err := DecodeInput(data, enc)
+			if err != nil && got != nil {
+				t.Fatalf("DecodeInput(%q, %q) failed with %v but returned %x", data, enc, err, got)
+			}
+			if enc == "raw" && (err != nil || !bytes.Equal(got, data)) {
+				t.Fatalf("raw decoding changed %x into %x (%v)", data, got, err)
+			}
 		}
 	})
 }

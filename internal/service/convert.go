@@ -82,8 +82,8 @@ func MessageToDocument(spec *iso8583.MessageSpec, raw []byte) (messageio.Documen
 // other composites are recursed; primitives become text (or hex when they are
 // not printable strings).
 func appendFieldToDocument(doc *messageio.Document, path string, f field.Field) error {
-	if isTLVCompositeField(f) {
-		sub := f.(compositeField).GetSubfields()
+	if composite, ok := f.(*field.Composite); ok && isTLVCompositeField(f) {
+		sub := composite.GetSubfields()
 		for _, tag := range sortedFieldKeys(sub) {
 			child := sub[tag]
 			// A constructed (nested) TLV tag is itself a composite; recurse so its

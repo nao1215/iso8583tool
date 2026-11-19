@@ -230,7 +230,7 @@ func ValidateAddress(addr string) error {
 // SendMessage opens a single TCP connection, writes one framed request, reads
 // one framed response, and returns the timing and byte counts. Each failure
 // (connect, send, receive) is wrapped so the caller can report what failed.
-func SendMessage(req SendRequest) (SendResult, error) {
+func SendMessage(req SendRequest) (result SendResult, err error) {
 	if err := ValidateAddress(req.Address); err != nil {
 		return SendResult{}, err
 	}
@@ -245,7 +245,11 @@ func SendMessage(req SendRequest) (SendResult, error) {
 	if err != nil {
 		return SendResult{}, fmt.Errorf("connect to %s: %w", req.Address, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil && err == nil {
+			result, err = SendResult{}, fmt.Errorf("close connection to %s: %w", req.Address, cerr)
+		}
+	}()
 
 	if req.Timeout > 0 {
 		if err := conn.SetDeadline(time.Now().Add(req.Timeout)); err != nil {

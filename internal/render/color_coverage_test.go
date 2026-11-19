@@ -75,7 +75,9 @@ func TestIsTerminal(t *testing.T) {
 		t.Fatal("a regular file is not a terminal")
 	}
 	// Stat on a closed file returns an error, exercising the error branch.
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if IsTerminal(f) {
 		t.Fatal("a closed file is not a terminal")
 	}

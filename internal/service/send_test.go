@@ -250,15 +250,18 @@ func TestFramingNoneReadsUntilEOF(t *testing.T) {
 func TestFramingNoneReturnsBytesReadBeforeTimeout(t *testing.T) {
 	t.Parallel()
 	client, server := net.Pipe()
-	defer func() { _ = client.Close() }()
-	defer func() { _ = server.Close() }()
+	closePipe(t, client, server)
 
+	wrote := make(chan error, 1)
 	go func() {
-		_, _ = server.Write([]byte("partial"))
+		_, err := server.Write([]byte("partial"))
+		wrote <- err
 		// Never close: the client's read deadline must fire.
 	}()
 
-	_ = client.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	if err := client.SetReadDeadline(time.Now().Add(150 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
 	got, err := FramingNone.ReadResponse(client)
 	if err != nil {
 		t.Fatalf("expected the bytes received before the deadline, got error: %v", err)
@@ -266,6 +269,21 @@ func TestFramingNoneReturnsBytesReadBeforeTimeout(t *testing.T) {
 	if !bytes.Equal(got, []byte("partial")) {
 		t.Errorf("got %q, want %q", got, "partial")
 	}
+	if err := <-wrote; err != nil {
+		t.Errorf("server write: %v", err)
+	}
+}
+
+// closePipe closes both ends of a net.Pipe when the test ends.
+func closePipe(t *testing.T, ends ...net.Conn) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, c := range ends {
+			if err := c.Close(); err != nil {
+				t.Errorf("close pipe: %v", err)
+			}
+		}
+	})
 }
 
 func TestFramingNoneRejectsOversizedResponse(t *testing.T) {
@@ -285,10 +303,11 @@ func TestFramingNoneRejectsOversizedResponse(t *testing.T) {
 func TestFramingNoneTimesOutWithNoBytes(t *testing.T) {
 	t.Parallel()
 	client, server := net.Pipe()
-	defer func() { _ = client.Close() }()
-	defer func() { _ = server.Close() }()
+	closePipe(t, client, server)
 
-	_ = client.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if err := client.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
 	_, err := FramingNone.ReadResponse(client)
 	if err == nil {
 		t.Fatal("expected a timeout error when no bytes arrive")
@@ -422,22 +441,32 @@ func TestSendMessageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer func() { _ = ln.Close() }()
+	defer func() {
+		if err := ln.Close(); err != nil {
+			t.Errorf("close listener: %v", err)
+		}
+	}()
 
 	reply := []byte{0x08, 0x10, 0x00}
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	go func() {
-		defer close(done)
 		conn, err := ln.Accept()
 		if err != nil {
+			done <- err
 			return
 		}
-		defer func() { _ = conn.Close() }()
-		if _, err := Framing2ByteBinary.ReadResponse(conn); err != nil {
-			return
-		}
-		framed, _ := Framing2ByteBinary.Encode(reply)
-		_, _ = conn.Write(framed)
+		served := func() error {
+			if _, err := Framing2ByteBinary.ReadResponse(conn); err != nil {
+				return err
+			}
+			framed, err := Framing2ByteBinary.Encode(reply)
+			if err != nil {
+				return err
+			}
+			_, err = conn.Write(framed)
+			return err
+		}()
+		done <- errors.Join(served, conn.Close())
 	}()
 
 	req := []byte{0x08, 0x00, 0x01, 0x02}
@@ -459,5 +488,7 @@ func TestSendMessageRoundTrip(t *testing.T) {
 	if result.ReceivedBytes != len(reply)+2 {
 		t.Errorf("ReceivedBytes = %d, want %d", result.ReceivedBytes, len(reply)+2)
 	}
-	<-done
+	if err := <-done; err != nil {
+		t.Errorf("server: %v", err)
+	}
 }
