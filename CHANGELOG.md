@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A command whose output cannot be written (stdout closed, a full disk, `> /dev/full`) now prints `iso8583tool: write stdout: <reason>` on stderr and exits 1. It used to exit 0 with the output lost. `send` also reports a failure to close its connection instead of discarding it.
 
+### Removed
+
+- The `github.com/nao1215/iso8583tool/cmd` package moved to `internal/cmd`. It only held the CLI's command dispatch, and pkg.go.dev lists no importers (2026-11-19). The `iso8583tool` command is unchanged.
+
 ### Changed
 
 - Dependencies: moov-io/iso8583 v0.26.4, golang.org/x/text v0.44.0.

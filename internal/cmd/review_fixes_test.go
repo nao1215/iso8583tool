@@ -215,7 +215,7 @@ func TestSendDryRunHelpDocumentsUnsafeFramedBytes(t *testing.T) {
 
 func TestDoctorAmbiguityExplainsFieldFiftyFive(t *testing.T) {
 	t.Parallel()
-	msg := filepath.Join("..", "examples", "spec87ascii", "0800-network-echo.hex")
+	msg := filepath.Join("..", "..", "examples", "spec87ascii", "0800-network-echo.hex")
 	code, out, errOut := runApp("", "doctor", msg, "--no-color")
 	if code != 0 {
 		t.Fatalf("doctor: code=%d err=%q", code, errOut)

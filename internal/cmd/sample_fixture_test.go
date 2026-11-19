@@ -24,7 +24,7 @@ func readFixture(t *testing.T, path string) string {
 func TestBundledSamplesMatchFixtures(t *testing.T) {
 	t.Parallel()
 
-	fixtureDir := filepath.Join("..", "examples", "basei")
+	fixtureDir := filepath.Join("..", "..", "examples", "basei")
 	for _, sample := range basei.StarterSamples() {
 		t.Run(sample.Name, func(t *testing.T) {
 			t.Parallel()
