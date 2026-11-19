@@ -8,7 +8,7 @@ GO_TEST    = $(GO) test
 GO_TOOL    = $(GO) tool
 GO_INSTALL = $(GO) install
 GO_PKGROOT = ./...
-LDFLAGS    = -s -w -X github.com/nao1215/iso8583tool/cmd.Version=$(VERSION)
+LDFLAGS    = -s -w -X github.com/nao1215/iso8583tool/internal/cmd.Version=$(VERSION)
 
 build: ## Build binary
 	env GO111MODULE=on CGO_ENABLED=0 $(GO_BUILD) -ldflags "$(LDFLAGS)" -o $(APP) main.go

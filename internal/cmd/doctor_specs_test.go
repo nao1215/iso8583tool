@@ -169,7 +169,7 @@ func TestValidateFailureHintsDoctor(t *testing.T) {
 	// A complete message that unpacks far enough to fail at a data field under the
 	// wrong spec is the case the doctor hint is for. (A header-level failure is
 	// reported as truncated/corrupt instead.)
-	code, out, _ := runApp("", "validate", "../examples/spec87ascii/0800-network-echo.hex", "--spec", "spec87bcd-starter", "--no-color")
+	code, out, _ := runApp("", "validate", "../../examples/spec87ascii/0800-network-echo.hex", "--spec", "spec87bcd-starter", "--no-color")
 	if code != 1 {
 		t.Fatalf("validate should fail: %d", code)
 	}
@@ -184,7 +184,7 @@ func TestValidateFailureHintsDoctor(t *testing.T) {
 func TestDoctorAmbiguousListsAllTiedPresets(t *testing.T) {
 	t.Parallel()
 
-	code, out, _ := runApp("", "doctor", "../examples/spec87ascii/0800-network-echo.hex", "--no-color")
+	code, out, _ := runApp("", "doctor", "../../examples/spec87ascii/0800-network-echo.hex", "--no-color")
 	if code != 0 {
 		t.Fatalf("doctor failed: %d\n%s", code, out)
 	}

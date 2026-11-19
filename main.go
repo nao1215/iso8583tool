@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/nao1215/iso8583tool/cmd"
+	"github.com/nao1215/iso8583tool/internal/cmd"
 )
 
 func main() {

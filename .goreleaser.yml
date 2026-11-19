@@ -15,7 +15,7 @@ builds:
   - main: .
     binary: iso8583tool
     ldflags:
-      - -s -w -X github.com/nao1215/iso8583tool/cmd.Version=v{{ .Version }}
+      - -s -w -X github.com/nao1215/iso8583tool/internal/cmd.Version=v{{ .Version }}
     env:
       - CGO_ENABLED=0
     goos:

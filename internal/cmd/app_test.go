@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const examplesDir = "../examples/basei"
+const examplesDir = "../../examples/basei"
 
 func example(name string) string { return filepath.Join(examplesDir, name) }
 
