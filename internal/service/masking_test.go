@@ -9,6 +9,35 @@ import (
 	"github.com/nao1215/iso8583tool/internal/render"
 )
 
+// TestMasksKeepExactlyTheBINAndTheLastFourDigits pins the exact masked text at
+// the length boundaries, where a check that only looks for the raw value would
+// pass even if one more or one fewer digit were shown.
+func TestMasksKeepExactlyTheBINAndTheLastFourDigits(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		mask func(string) string
+		in   string
+		want string
+	}{
+		{"pan of 10 digits is masked whole", maskPAN, "4111111111", "**********"},
+		{"pan of 11 digits shows bin and last four", maskPAN, "41111111234", "411111*1234"},
+		{"track of 6 characters is masked whole", maskTrack, "411111", "******"},
+		{"track of 7 characters keeps the bin", maskTrack, "4111112", "411111*"},
+		{"separators stay in place", maskPANKeepingSeparators, "4111-1111-1111-1234", "4111-11**-****-1234"},
+		{"zeros count as digits", maskEmbeddedSensitive, "ref 4000000000000002 ok", "ref 400000******0002 ok"},
+		{"nines count as digits", maskEmbeddedSensitive, "ref 4999999999999996 ok", "ref 499999******9996 ok"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.mask(tc.in); got != tc.want {
+				t.Fatalf("mask(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestMaskEmbeddedSensitive covers the embedded-PAN scanner: Luhn-valid and
 // key-labeled PANs (contiguous or separated) are masked, while plain numeric
 // identifiers are left intact.

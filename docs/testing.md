@@ -48,6 +48,20 @@ The fuzz targets parse untrusted input and check that a malformed message fails 
 go test ./internal/service -run '^$' -fuzz '^FuzzMessageToDocument$' -fuzztime 1m
 ```
 
+## Mutation testing
+
+[gremlins](https://github.com/go-gremlins/gremlins) v0.6.0 changes one expression at a time (a `<` to `<=`, a `==` to `!=`, a `+` to `-`) and runs the tests against each mutant. A mutant that no test notices (lived) points at a condition the tests execute but do not check. `mutation.yml` mutates every package weekly and, on a pull request, only the lines the pull request changes. Run it locally with:
+
+```shell
+gremlins unleash --workers 2 --timeout-coefficient 10 .
+```
+
+| Date | Killed | Lived | Not covered | Timed out | Efficacy (killed / (killed + lived)) |
+|---|---|---|---|---|---|
+| 2026-11-19 | 644 | 138 | 108 | 9 | 82.35% |
+
+The efficacy is a record, not a gate. Some lived mutants are equivalent (a boundary change on a length that is never equal to the limit), so the number is not expected to reach 100%.
+
 ## Paired CI benchmarks
 
 [`bench/himorime.yaml`](../bench/himorime.yaml) measures each command with [himorime](https://github.com/nao1215/himorime). On a pull request, `bench.yml` builds the base and the head and measures them alternately on the same runner, so a regression is judged against the base and not against a stored number. Run it locally with `make bench`, or `make bench-compare` against main.

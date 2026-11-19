@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI scans every pull request and push to main for committed secrets with gitleaks, runs govulncheck v1.10.0, and runs the E2E suite with atago v0.26.3 and the benchmarks with himorime v0.6.1. The README coverage badge now comes from octocovs-central-repo instead of an SVG committed back to this repository.
 - Tests compare the ISO 8583:1987 ASCII preset with github.com/mofax/iso8583, an independent implementation used only by the tests: the field table, the packed bytes, and reading each other's messages. The README's Testing section lists the techniques and docs/testing.md how to run them.
 - CI scans the repository with gosec and Trivy on every pull request (Trivy covers dependency vulnerabilities, committed secrets and misconfigurations, and also runs daily). Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
+- Mutation testing with gremlins v0.6.0 runs weekly over every package and on each pull request over the changed lines. The first full run killed 644 of 782 mutants (82.35%); docs/testing.md records it.
 
 ## [0.8.4] - 2026-11-09
 
