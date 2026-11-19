@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A command whose output cannot be written (stdout closed, a full disk, `> /dev/full`) now prints `iso8583tool: write stdout: <reason>` on stderr and exits 1. It used to exit 0 with the output lost. `send` also reports a failure to close its connection instead of discarding it.
+
 ### Changed
 
 - Dependencies: moov-io/iso8583 v0.26.4, golang.org/x/text v0.44.0.
-- CI scans every pull request and push to main for committed secrets with gitleaks, runs govulncheck v1.10.0, and runs the E2E suite with atago v0.26.1 and the benchmarks with himorime v0.6.0. The README coverage badge now comes from octocovs-central-repo instead of an SVG committed back to this repository.
+- CI scans every pull request and push to main for committed secrets with gitleaks, runs govulncheck v1.10.0, and runs the E2E suite with atago v0.26.3 and the benchmarks with himorime v0.6.1. The README coverage badge now comes from octocovs-central-repo instead of an SVG committed back to this repository.
 - Tests compare the ISO 8583:1987 ASCII preset with github.com/mofax/iso8583, an independent implementation used only by the tests: the field table, the packed bytes, and reading each other's messages. The README's Testing section lists the techniques and docs/testing.md how to run them.
 - CI scans the repository with gosec and Trivy on every pull request (Trivy covers dependency vulnerabilities, committed secrets and misconfigurations, and also runs daily). Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
 

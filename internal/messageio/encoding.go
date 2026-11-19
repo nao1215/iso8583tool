@@ -26,7 +26,7 @@ var errInputTooLarge = fmt.Errorf("input exceeds the %d-byte limit", MaxInputSiz
 // used verbatim instead. stdin may be nil when not available. Any single source
 // is capped at MaxInputSize so oversized input fails cleanly instead of being
 // loaded in full.
-func ReadSource(target, inline string, stdin io.Reader) ([]byte, error) {
+func ReadSource(target, inline string, stdin io.Reader) (data []byte, err error) {
 	if strings.TrimSpace(inline) != "" {
 		if strings.TrimSpace(target) != "" {
 			return nil, errors.New("provide either a file argument or --raw, not both")
@@ -46,7 +46,11 @@ func ReadSource(target, inline string, stdin io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			data, err = nil, cerr
+		}
+	}()
 	return readLimited(f)
 }
 

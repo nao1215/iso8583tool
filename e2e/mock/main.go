@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -26,70 +27,80 @@ func main() {
 	noReply := flag.Bool("no-reply", false, "read the request but never reply (to exercise client timeouts)")
 	flag.Parse()
 
-	framing, err := service.ParseFraming(*framingName)
-	if err != nil {
-		fail(err)
+	if err := run(*addr, *framingName, *replyHex, *readyFile, *noReply); err != nil {
+		// When stderr is gone too, the exit code is all that is left to report.
+		if _, werr := fmt.Fprintln(os.Stderr, "mock:", err); werr != nil {
+			os.Exit(1)
+		}
+		os.Exit(1)
 	}
-	reply, err := hex.DecodeString(strings.TrimSpace(*replyHex))
+}
+
+func run(addr, framingName, replyHex, readyFile string, noReply bool) (err error) {
+	framing, err := service.ParseFraming(framingName)
 	if err != nil {
-		fail(fmt.Errorf("decode --reply-hex: %w", err))
+		return err
+	}
+	reply, err := hex.DecodeString(strings.TrimSpace(replyHex))
+	if err != nil {
+		return fmt.Errorf("decode --reply-hex: %w", err)
 	}
 
 	lc := net.ListenConfig{}
-	ln, err := lc.Listen(context.Background(), "tcp", *addr)
+	ln, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
-		fail(err)
+		return err
 	}
-	defer func() { _ = ln.Close() }()
+	defer func() { err = errors.Join(err, ln.Close()) }()
 
 	// Publish the actual address (the port is ephemeral) so the test can connect
 	// without guessing a port. The ready file appearing is the test's signal.
-	if *readyFile != "" {
-		if err := os.WriteFile(*readyFile, []byte(ln.Addr().String()), 0o600); err != nil {
-			fail(err)
+	if readyFile != "" {
+		if err := os.WriteFile(readyFile, []byte(ln.Addr().String()), 0o600); err != nil {
+			return err
 		}
 	}
-	fmt.Println(ln.Addr().String())
+	if _, err := fmt.Println(ln.Addr().String()); err != nil {
+		return err
+	}
 
 	conn, err := ln.Accept()
 	if err != nil {
-		fail(err)
+		return err
 	}
-	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	defer func() { err = errors.Join(err, conn.Close()) }()
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		return err
+	}
 
 	if _, err := framing.ReadResponse(conn); err != nil {
-		fail(fmt.Errorf("read request: %w", err))
+		return fmt.Errorf("read request: %w", err)
 	}
 
-	if *noReply {
+	if noReply {
 		// Hold the connection open so the client blocks on its read deadline.
 		time.Sleep(20 * time.Second)
-		return
+		return nil
 	}
 
 	framed, err := framing.Encode(reply)
 	if err != nil {
-		fail(err)
+		return err
 	}
 	// A single Write may be short; loop so the whole frame reaches the client and
 	// the e2e tests stay deterministic.
 	for len(framed) > 0 {
 		n, err := conn.Write(framed)
 		if err != nil {
-			fail(err)
+			return err
 		}
 		if n == 0 {
-			fail(fmt.Errorf("short write: wrote 0 bytes"))
+			return errors.New("short write: wrote 0 bytes")
 		}
 		framed = framed[n:]
 	}
 	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
-		_ = cw.CloseWrite()
+		return cw.CloseWrite()
 	}
-}
-
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, "mock:", err)
-	os.Exit(1)
+	return nil
 }

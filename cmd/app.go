@@ -38,8 +38,8 @@ func resolveVersion() string {
 }
 
 type App struct {
-	stdout  io.Writer
-	stderr  io.Writer
+	stdout  *trackedWriter
+	stderr  *trackedWriter
 	stdin   io.Reader
 	workDir string
 }
@@ -52,14 +52,27 @@ type resolvedContext struct {
 
 func NewApp(stdout, stderr io.Writer, stdin io.Reader, workDir string) *App {
 	return &App{
-		stdout:  stdout,
-		stderr:  stderr,
+		stdout:  &trackedWriter{w: stdout},
+		stderr:  &trackedWriter{w: stderr},
 		stdin:   stdin,
 		workDir: workDir,
 	}
 }
 
+// Run runs the command line args and returns the exit code. A write to stdout
+// that failed (a closed pipe, a full disk, /dev/full) is reported on stderr and
+// makes the exit code 1 even when the command itself succeeded, so a script
+// does not take a lost output for a result.
 func (a *App) Run(args []string) int {
+	code := a.run(args)
+	if a.stdout.err == nil {
+		return code
+	}
+	writef(a.stderr, "iso8583tool: write stdout: %v\n", a.stdout.err)
+	return max(code, 1)
+}
+
+func (a *App) run(args []string) int {
 	if len(args) == 0 {
 		a.printRootHelp(a.stdout)
 		return 0
@@ -193,9 +206,9 @@ func (a *App) runView(args []string) int {
 
 	// Filtered output is just the matched fields, kept terse for piping.
 	if len(filters) > 0 {
-		_, _ = io.WriteString(a.stdout, result.Body)
+		writeString(a.stdout, result.Body)
 		if !strings.HasSuffix(result.Body, "\n") {
-			_, _ = io.WriteString(a.stdout, "\n")
+			writeString(a.stdout, "\n")
 		}
 		return 0
 	}
@@ -205,11 +218,11 @@ func (a *App) runView(args []string) int {
 		if result.Summary != "" {
 			writef(a.stdout, "%s %s\n", pal.Dim("Summary:"), pal.Cyan(result.Summary))
 		}
-		_, _ = io.WriteString(a.stdout, "\n")
+		writeString(a.stdout, "\n")
 	}
-	_, _ = io.WriteString(a.stdout, result.Body)
+	writeString(a.stdout, result.Body)
 	if !strings.HasSuffix(result.Body, "\n") {
-		_, _ = io.WriteString(a.stdout, "\n")
+		writeString(a.stdout, "\n")
 	}
 	if *format == "describe" && len(result.Extensions) > 0 {
 		writef(a.stdout, "\n%s\n", pal.BoldCyan("Extension Field Strategy:"))
@@ -340,7 +353,7 @@ func (a *App) printDiff(result service.DiffResult, pal render.Palette) {
 	}
 	for i, c := range result.Changes {
 		if i > 0 {
-			_, _ = io.WriteString(a.stdout, "\n")
+			writeString(a.stdout, "\n")
 		}
 		label := "Field " + c.Path
 		if c.Path == "mti" {
@@ -591,7 +604,7 @@ func (a *App) runConvert(args []string) int {
 		return 0
 	}
 
-	_, _ = a.stdout.Write(out)
+	writeBytes(a.stdout, out)
 	a.warnConvertUnmaskedStdout()
 	return 0
 }
@@ -601,7 +614,7 @@ func (a *App) runConvert(args []string) int {
 // by default. It writes to stderr only when a human is watching a terminal, so
 // convert | convert and other scripted pipelines stay byte-clean.
 func (a *App) warnConvertUnmaskedStdout() {
-	if f, ok := a.stdout.(*os.File); ok && render.IsTerminal(f) {
+	if f, ok := a.stdout.w.(*os.File); ok && render.IsTerminal(f) {
 		writeLine(a.stderr, "Note: convert output is unmasked for round-trip fidelity; it holds the PAN/track/PIN in the clear. Treat it as sensitive and use redact to share safely.")
 	}
 }
@@ -1416,9 +1429,9 @@ func (a *App) runSample(args []string) int {
 		return 0
 	}
 
-	_, _ = a.stdout.Write(data)
+	writeBytes(a.stdout, data)
 	if len(data) == 0 || data[len(data)-1] != '\n' {
-		_, _ = io.WriteString(a.stdout, "\n")
+		writeString(a.stdout, "\n")
 	}
 	return 0
 }
@@ -1507,7 +1520,10 @@ func (a *App) palette(mode, format string) render.Palette {
 	if format == "json" {
 		return render.NewPalette(false)
 	}
-	out, _ := a.stdout.(*os.File)
+	out, isFile := a.stdout.w.(*os.File)
+	if !isFile {
+		out = nil
+	}
 	return render.NewPalette(render.ResolveColor(mode, out))
 }
 
@@ -1767,10 +1783,59 @@ func printFlagDefaults(w io.Writer, flagSet *flag.FlagSet) {
 	})
 }
 
-func writef(w io.Writer, format string, args ...any) {
-	_, _ = fmt.Fprintf(w, format, args...)
+// trackedWriter remembers the first write error, so that Run can turn a lost
+// output into a non-zero exit instead of reporting success. After a failure it
+// drops further writes.
+type trackedWriter struct {
+	w   io.Writer
+	err error
 }
 
-func writeLine(w io.Writer, v any) {
-	_, _ = fmt.Fprintln(w, v)
+func (t *trackedWriter) Write(p []byte) (int, error) {
+	if t.err != nil {
+		return 0, t.err
+	}
+	n, err := t.w.Write(p)
+	if err != nil {
+		t.err = err
+	}
+	return n, err
 }
+
+// tracked returns w as one of the App's writers. Every writer a command prints
+// to is a.stdout, a.stderr, or flagSet.Output(), which newFlagSet and
+// parseFlags set to one of them, so another writer is a programming error.
+func tracked(w io.Writer) *trackedWriter {
+	t, ok := w.(*trackedWriter)
+	if !ok {
+		panic(fmt.Sprintf("cmd: write to an untracked %T", w))
+	}
+	return t
+}
+
+// printf, println and write keep the first error on t, where Run reads it.
+func (t *trackedWriter) printf(format string, args ...any) {
+	if t.err == nil {
+		_, t.err = fmt.Fprintf(t.w, format, args...)
+	}
+}
+
+func (t *trackedWriter) println(v any) {
+	if t.err == nil {
+		_, t.err = fmt.Fprintln(t.w, v)
+	}
+}
+
+func (t *trackedWriter) write(b []byte) {
+	if t.err == nil {
+		_, t.err = t.w.Write(b)
+	}
+}
+
+func writef(w io.Writer, format string, args ...any) { tracked(w).printf(format, args...) }
+
+func writeLine(w io.Writer, v any) { tracked(w).println(v) }
+
+func writeString(w io.Writer, s string) { tracked(w).write([]byte(s)) }
+
+func writeBytes(w io.Writer, b []byte) { tracked(w).write(b) }

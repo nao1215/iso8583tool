@@ -94,8 +94,14 @@ func TestDiffDeterministicOrderAndFilter(t *testing.T) {
 	after.BinaryFields["55.9F02"] = "000000005000"
 	after.BinaryFields["55.9F36"] = "0099"
 
-	beforeRaw, _ := WriteMessage(before, spec.MessageSpec)
-	afterRaw, _ := WriteMessage(after, spec.MessageSpec)
+	beforeRaw, err := WriteMessage(before, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("pack before: %v", err)
+	}
+	afterRaw, err := WriteMessage(after, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("pack after: %v", err)
+	}
 
 	// Unfiltered ordering is deterministic and path-sorted (4 before 55.*).
 	all, err := DiffMessages(spec.MessageSpec, beforeRaw.Raw, afterRaw.Raw, nil, false)
@@ -130,13 +136,19 @@ func TestDiffFilterAliasesAndNormalization(t *testing.T) {
 	before := basei.AuthRequest()
 	before.Fields["4"] = "000000001000"
 	before.BinaryFields["55.9F02"] = "000000001000"
-	beforeRaw, _ := WriteMessage(before, spec.MessageSpec)
+	beforeRaw, err := WriteMessage(before, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("pack before: %v", err)
+	}
 
 	after := basei.AuthRequest()
 	after.MTI = "0110"
 	after.Fields["4"] = "000000005000"
 	after.BinaryFields["55.9F02"] = "000000009999"
-	afterRaw, _ := WriteMessage(after, spec.MessageSpec)
+	afterRaw, err := WriteMessage(after, spec.MessageSpec)
+	if err != nil {
+		t.Fatalf("pack after: %v", err)
+	}
 
 	// "0" is an MTI alias just like "mti".
 	for _, f := range []string{"0", "mti"} {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -21,30 +22,61 @@ func startEchoServer(t *testing.T, framing service.Framing, replyPayload []byte)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer func() { _ = conn.Close() }()
+	serveOnce(t, ln, func(conn net.Conn) error {
 		if _, err := framing.ReadResponse(conn); err != nil {
-			return
+			// The client under test may give up early; its own check fails if it should not have.
+			t.Logf("server read: %v", err)
+			return nil
 		}
 		framed, err := framing.Encode(replyPayload)
 		if err != nil {
-			return
+			return err
 		}
 		// Loop over short writes so the full frame always reaches the client.
 		for len(framed) > 0 {
 			n, err := conn.Write(framed)
-			if err != nil || n == 0 {
-				return
+			if err != nil {
+				t.Logf("server write: %v", err)
+				return nil
+			}
+			if n == 0 {
+				return errors.New("server write: wrote 0 bytes")
 			}
 			framed = framed[n:]
 		}
-	}()
+		return nil
+	})
 	return ln.Addr().String()
+}
+
+// serveOnce accepts one connection on ln and hands it to handle on a
+// goroutine. When the test ends it closes ln, waits for the goroutine, and
+// reports an error from handle or from closing the connection or the listener.
+func serveOnce(t *testing.T, ln net.Listener, handle func(net.Conn) error) {
+	t.Helper()
+	done := make(chan error, 1)
+	t.Cleanup(func() {
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	})
+	t.Cleanup(func() {
+		if err := ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close listener: %v", err)
+		}
+	})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				err = nil // the test ended before a client connected
+			}
+			done <- err
+			return
+		}
+		herr := handle(conn)
+		done <- errors.Join(herr, conn.Close())
+	}()
 }
 
 // sampleHex packs a built-in sample to its raw bytes for use as a fixture.
@@ -260,16 +292,19 @@ func startSilentServer(t *testing.T, framing service.Framing) string {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
+	release := make(chan struct{})
+	serveOnce(t, ln, func(conn net.Conn) error {
 		// Drain the request but never reply; close only when the test ends.
-		_, _ = framing.ReadResponse(conn)
-		t.Cleanup(func() { _ = conn.Close() })
-	}()
+		if _, err := framing.ReadResponse(conn); err != nil {
+			// The client times out and closes first.
+			t.Logf("server read: %v", err)
+			return nil
+		}
+		<-release
+		return nil
+	})
+	// Registered after serveOnce, so it runs first and lets the handler return.
+	t.Cleanup(func() { close(release) })
 	return ln.Addr().String()
 }
 

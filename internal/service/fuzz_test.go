@@ -36,8 +36,12 @@ func FuzzMessageToDocument(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte("0100"))
 
-	f.Fuzz(func(_ *testing.T, data []byte) {
-		_, _ = MessageToDocument(spec, data)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		doc, err := MessageToDocument(spec, data)
+		again, errAgain := MessageToDocument(spec, data)
+		if (err == nil) != (errAgain == nil) || !reflect.DeepEqual(doc, again) {
+			t.Fatalf("two unpacks of the same bytes disagree: (%v, %v) then (%v, %v)", doc, err, again, errAgain)
+		}
 	})
 }
 
@@ -48,8 +52,18 @@ func FuzzRedactMessage(f *testing.F) {
 		f.Add(seed)
 	}
 
-	f.Fuzz(func(_ *testing.T, data []byte) {
-		_, _, _ = RedactMessage(spec, data)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		doc, masked, err := RedactMessage(spec, data)
+		if err != nil {
+			if len(masked) != 0 {
+				t.Fatalf("a failed redaction reported masked fields %v", masked)
+			}
+			return
+		}
+		again, maskedAgain, errAgain := RedactMessage(spec, data)
+		if errAgain != nil || !reflect.DeepEqual(doc, again) || !reflect.DeepEqual(masked, maskedAgain) {
+			t.Fatalf("two redactions of the same bytes disagree: %v", errAgain)
+		}
 	})
 }
 
@@ -61,8 +75,23 @@ func FuzzDiffMessages(f *testing.F) {
 		f.Add(seeds[0], seeds[1])
 	}
 
-	f.Fuzz(func(_ *testing.T, before, after []byte) {
-		_, _ = DiffMessages(spec, before, after, nil, false)
+	f.Fuzz(func(t *testing.T, before, after []byte) {
+		_, err := DiffMessages(spec, before, after, nil, false)
+		_, errBefore := MessageToDocument(spec, before)
+		_, errAfter := MessageToDocument(spec, after)
+		if (err == nil) != (errBefore == nil && errAfter == nil) {
+			t.Fatalf("diff error %v does not match the unpack errors %v and %v", err, errBefore, errAfter)
+		}
+		if err != nil {
+			return
+		}
+		same, err := DiffMessages(spec, before, before, nil, false)
+		if err != nil {
+			t.Fatalf("diff of a message with itself failed: %v", err)
+		}
+		if len(same.Changes) != 0 {
+			t.Fatalf("diff of a message with itself reported %v", same.Changes)
+		}
 	})
 }
 
