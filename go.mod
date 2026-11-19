@@ -3,13 +3,13 @@ module github.com/nao1215/iso8583tool
 go 1.26.3
 
 require (
-	github.com/moov-io/iso8583 v0.26.2
+	github.com/moov-io/iso8583 v0.26.4
 	pgregory.net/rapid v1.3.0
 )
 
 require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/yerden/go-util v1.1.4 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
