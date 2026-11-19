@@ -15,11 +15,10 @@ jobs:
     name: Coverage (unit + e2e)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # contents: write lets the push-to-main run commit the regenerated coverage
-    # badge back to the repo. actions/pull-requests scopes are for octocov's
-    # artifact datastore (report/diff in .octocov.yml) and PR comment.
+    # actions/pull-requests scopes are for octocov's artifact datastore
+    # (report/diff in .octocov.yml) and PR comment.
     permissions:
-      contents: write
+      contents: read
       actions: write
       pull-requests: write
 
@@ -36,7 +35,7 @@ jobs:
       - name: Install atago
         uses: nao1215/setup-atago@5c563dcd9d85e114f8abe8bbdcd058e51de09efb # v0.1.3
         with:
-          version: v0.25.2
+          version: v0.26.1
 
       # Combines unit-test coverage with self-hosted E2E coverage (E2E runs a
       # `go build -cover` iso8583tool and collects covdata via GOCOVERDIR), then
@@ -50,16 +49,3 @@ jobs:
           work-dir: .
           args: --report=coverage.out
 
-      # octocov regenerates docs/coverage.svg (coverage.badge.path) while it runs
-      # above. On push to main, commit the refreshed badge back so the README %
-      # stays current. [skip ci] keeps this from re-triggering the workflow.
-      - name: Commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if [ -n "$(git status --porcelain docs/coverage.svg)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add docs/coverage.svg
-            git commit -m "chore(coverage): update coverage badge [skip ci]"
-            git push
-          fi

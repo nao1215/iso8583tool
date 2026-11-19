@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependencies: moov-io/iso8583 v0.26.4, golang.org/x/text v0.44.0.
+- CI scans every pull request and push to main for committed secrets with gitleaks, runs govulncheck v1.10.0, and runs the E2E suite with atago v0.26.1 and the benchmarks with himorime v0.6.0. The README coverage badge now comes from octocovs-central-repo instead of an SVG committed back to this repository.
 - CI scans the repository with gosec and Trivy on every pull request (Trivy covers dependency vulnerabilities, committed secrets and misconfigurations, and also runs daily). Workflow actions are recorded in `.github/workflows/actions.lock`, which CI verifies against the pinned commits.
 
 ## [0.8.4] - 2026-11-09
