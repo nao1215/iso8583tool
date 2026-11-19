@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-19
+
 ### Fixed
 
 - A command whose output cannot be written (stdout closed, a full disk, `> /dev/full`) now prints `iso8583tool: write stdout: <reason>` on stderr and exits 1. It used to exit 0 with the output lost. `send` also reports a failure to close its connection instead of discarding it.
@@ -521,7 +523,8 @@ payment messages, oriented around BASE I.
   multi-platform unit tests, coverage (octocov), linting (golangci-lint via
   reviewdog), and e2e.
 
-[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/nao1215/iso8583tool/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/nao1215/iso8583tool/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/nao1215/iso8583tool/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/nao1215/iso8583tool/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/nao1215/iso8583tool/compare/v0.8.1...v0.8.2
