@@ -599,32 +599,18 @@ for a fictional acquirer lives at
 iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay-config.json
 ```
 
-## Fuzzing and property-based tests
+## Testing
 
-Parsing untrusted input is fuzzed so malformed messages fail with an error
-instead of crashing:
+| Technique | Bug class caught here |
+|---|---|
+| [Unit tests and atago E2E](./e2e/atago) | Wrong output, exit codes and README examples of each command |
+| [Property-based tests](./internal/service/pbt_test.go) | Round trips that drift, redaction that leaks a cardholder value |
+| [Metamorphic relations](./internal/service/metamorphic_test.go) | Masking that is not idempotent, presets that read a message differently |
+| [Differential tests against mofax/iso8583](./internal/service/differential_test.go) | Wrong field lengths in the 1987 table, packing that another implementation reads differently |
+| [Fuzzing](./internal/service/fuzz_test.go) | Crashes and PAN leaks on malformed messages |
+| [Paired CI benchmarks](./bench/himorime.yaml) | Commands that got slower or use more memory |
 
-```shell
-go test ./internal/service -run '^$' -fuzz=FuzzMessageToDocument
-```
-
-The service targets are `FuzzMessageToDocument`, `FuzzDiffMessages`,
-`FuzzRedactMessage`, `FuzzConvertRoundTrip` (convert is a fixed point),
-`FuzzValidateNoPanic`, and `FuzzViewNeverLeaksPAN` (the text view masks each
-cardholder field exactly). Document parsing and rendering are fuzzed too —
-`FuzzParseDocument`, `FuzzCanonicalPath`, `FuzzDecodeInput` (internal/messageio),
-and `FuzzSanitizeControl` (internal/render). Crashing or failing inputs are kept
-as regression seeds and replayed by `go test ./...`.
-
-Property-based tests ([pgregory.net/rapid](https://pgregory.net/rapid)) assert
-the higher-level invariants — convert round-trips, redact never leaks a
-cardholder value and is idempotent, diff is symmetric and reflexive, hex
-encode/decode are inverses, the masks preserve length, and strict validation is
-monotonic. Run more cases with:
-
-```shell
-go test ./internal/service -run TestPBT -rapid.checks=20000
-```
+Commands and details: [docs/testing.md](./docs/testing.md).
 
 ## Development
 
