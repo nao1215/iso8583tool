@@ -24,12 +24,16 @@ A command-line tool for debugging and inspecting ISO 8583 payment messages.
 ![demo](./docs/demo.gif)
 
 ```shell
+iso8583tool sample
 iso8583tool view examples/basei/0110-auth-response.hex
 iso8583tool diff examples/basei/0100-auth-request.hex examples/basei/0110-auth-response.hex
 iso8583tool redact examples/basei/0100-auth-request.hex
+iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
+iso8583tool convert examples/basei/0100-auth-request.hex
+iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
 ```
 
-Messages come from a file, `-`, or stdin, and JSON output pipes into `jq`:
+A message is read from a file, `-`, or stdin, and JSON output pipes into `jq`. Flags may come before or after the positional argument. Use `--` before a dash-leading filename.
 
 ```shell
 iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
@@ -49,13 +53,9 @@ make build   # produces ./iso8583tool
 
 ### Verifying release integrity
 
-Prebuilt archives for Linux, macOS, and Windows (`amd64` and `arm64`) are on [the release page](https://github.com/nao1215/iso8583tool/releases). Releases after v0.8.2 ship supply-chain metadata so you can verify what you download:
+Prebuilt archives for Linux, macOS, and Windows (`amd64` and `arm64`) are on [the release page](https://github.com/nao1215/iso8583tool/releases). Releases after v0.8.2 have `checksums.txt` signed with [cosign](https://github.com/sigstore/cosign) (keyless, as `checksums.txt.sigstore.json`), an SPDX SBOM (`*.sbom.json`) per archive, and SLSA build provenance attested via GitHub OIDC and attached as `multiple.intoto.jsonl`.
 
-- Signed checksums: `checksums.txt` is signed with [cosign](https://github.com/sigstore/cosign) (keyless), producing `checksums.txt.sigstore.json`.
-- SBOM: an SPDX Software Bill of Materials (`*.sbom.json`) is attached for each release archive.
-- Build provenance: SLSA build provenance is attested via GitHub OIDC, and is also attached to the release as `multiple.intoto.jsonl`.
-
-Verify the signed checksums (then check your download against `checksums.txt`):
+Verify the signed checksums, then your download:
 
 ```shell
 cosign verify-blob \
@@ -66,13 +66,13 @@ cosign verify-blob \
 sha256sum --check --ignore-missing checksums.txt
 ```
 
-Verify the build provenance of a downloaded artifact with the GitHub CLI:
+Verify the build provenance with the GitHub CLI:
 
 ```shell
 gh attestation verify iso8583tool_<version>_<os>_<arch>.tar.gz --repo nao1215/iso8583tool
 ```
 
-Or download the `multiple.intoto.jsonl` release asset and verify the archive against it with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier), which checks the provenance signature against the Sigstore transparency log:
+Or with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) and the `multiple.intoto.jsonl` asset:
 
 ```shell
 slsa-verifier verify-artifact iso8583tool_<version>_<os>_<arch>.tar.gz \
@@ -80,19 +80,6 @@ slsa-verifier verify-artifact iso8583tool_<version>_<os>_<arch>.tar.gz \
   --source-uri github.com/nao1215/iso8583tool \
   --source-tag v<version>
 ```
-
-## Quick Start
-
-```shell
-iso8583tool sample
-iso8583tool view examples/basei/0110-auth-response.hex
-iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
-iso8583tool convert examples/basei/0100-auth-request.hex
-iso8583tool send 127.0.0.1:8583 examples/basei/0800-network-echo.hex
-```
-
-A message is read from a file, `-`, or stdin. Flags may come before or after the
-positional argument. Use `--` before a dash-leading filename.
 
 ## Commands
 
@@ -109,17 +96,11 @@ sample     List or export built-in BASE I samples
 version    Print the version
 ```
 
-Every command defaults to the `basei-starter` spec. If a capture does not decode,
-run `iso8583tool doctor MESSAGE` to find the preset that fits, then pass it with
-`--spec`. `iso8583tool specs` lists the presets.
+Every command defaults to the `basei-starter` spec. If a capture does not decode, `iso8583tool doctor MESSAGE` finds the preset to pass with `--spec`.
 
 ## `view`
 
-Unpacks a message and prints its fields. Coded values are decoded, and
-cardholder data is masked by default: the PAN, track, PIN, and EMV tags that
-carry them, plus a PAN embedded in a free-form private field (such as F63).
-Pass `--unsafe` to show the raw values for local fault analysis — this applies
-to `describe`, `json`, and filtered output alike.
+Unpacks a message, prints its fields and decodes coded values. Cardholder data is masked by default: the PAN, track, PIN, the EMV tags that carry them, and a PAN embedded in a free-form private field such as F63. `--unsafe` shows the raw values in `describe`, `json`, and filtered output.
 
 ![view](./docs/demo-view.gif)
 
@@ -142,16 +123,7 @@ F49  Transaction Currency Code: 392  → JPY (Japanese yen)
 ...
 ```
 
-JSON output works with `jq`:
-
-```shell
-iso8583tool view examples/basei/0110-auth-response.hex --format json | jq '.fields["39"]'
-```
-
-`--filter` keeps the same object shape (`mti`, `fields`, `binary_fields`,
-`summary`, `decoded`), scoped to the matched paths, and adds a
-`missing_filters` array — always present, so a typo is distinguishable from an
-absent field:
+With `--filter`, the JSON keeps the same object shape (`mti`, `fields`, `binary_fields`, `summary`, `decoded`) scoped to the matched paths, and always adds a `missing_filters` array, so a typo can be told apart from an absent field:
 
 ```shell
 iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 90 --format json | jq '.missing_filters'
@@ -159,12 +131,7 @@ iso8583tool view examples/basei/0110-auth-response.hex --filter 39 --filter 90 -
 
 ## `diff`
 
-Compares two messages by field path, including nested EMV tags. Either side may
-be `-` for stdin. Differences are detected on the real values, but the displayed
-values are masked just like `view` (PAN to BIN + last four; track, PIN, unknown
-TLV bytes, and a PAN embedded in a private field all hidden), so diff output is
-safe to paste into a ticket. Pass `--unsafe` to show raw cardholder data for
-local fault analysis.
+Compares two messages by field path, including nested EMV tags. Either side may be `-` for stdin. Values are compared raw but displayed masked as in `view` (PAN to BIN + last four; track, PIN, unknown TLV bytes, and a PAN embedded in a private field hidden), so the output can go into a ticket. `--unsafe` shows raw cardholder data.
 
 ![diff](./docs/demo-diff.gif)
 
@@ -189,10 +156,7 @@ Field 12 changed
 
 ## `redact`
 
-Masks the PAN, track data, PIN, sensitive EMV tags, and a PAN embedded in a
-free-form private field. Output is a sanitized document, not a re-packable
-message. `redact` has no raw mode by design — it is the sanitizer, so use
-`view --unsafe` or `diff --unsafe` when you need to see raw values.
+Masks the PAN, track data, PIN, sensitive EMV tags, and a PAN embedded in a free-form private field. The output is a sanitized document that cannot be packed back into a message. `redact` has no raw mode; use `view --unsafe` or `diff --unsafe` to see raw values.
 
 ![redact](./docs/demo-redact.gif)
 
@@ -221,9 +185,7 @@ $ iso8583tool redact examples/basei/0100-auth-request.hex
 
 ## `convert`
 
-Converts between a packed message and a JSON document. The direction is detected
-from the input; use `--to json|hex` to force it. The message comes from a file
-argument, `-`/stdin, or an inline `--raw MESSAGE`.
+Converts between a packed message and a JSON document. The direction is detected from the input, or forced with `--to json|hex`. The message comes from a file argument, `-`/stdin, or an inline `--raw MESSAGE`.
 
 ```shell
 iso8583tool convert examples/basei/0100-auth-request.json
@@ -248,56 +210,29 @@ $ iso8583tool convert examples/basei/0100-auth-request.hex
 }
 ```
 
-Unknown Field 55 tags are preserved when converting. Unlike `view`, `diff`, and
-`send` — which mask cardholder data by default — `convert` emits the document
-**unmasked** so it round-trips, so the PAN, track, and PIN are in the clear.
-Treat its output as sensitive and use [`redact`](#redact) to share it safely.
-`convert --help` says the same, and a run prints a one-line reminder: in the
-`--output` report, or on stderr when stdout is a terminal. Piped runs
-(`convert | convert`, scripts) stay byte-clean. A document is rejected when a
-path is ambiguous — the same path in both `fields` and `binary_fields`, or a
-parent that also has nested children (for example `55` together with `55.9F02`,
-or `48` with `48.1`) — because packing it would be order-dependent and silently
-lossy.
+Unknown Field 55 tags are preserved. `convert` does not mask anything, so the document round-trips with the PAN, track, and PIN in the clear; use [`redact`](#redact) before sharing it. `convert --help` says so, and a run prints a one-line reminder in the `--output` report, or on stderr when stdout is a terminal. Piped runs (`convert | convert`, scripts) get no extra output.
+
+A document is rejected when a path is ambiguous: the same path in both `fields` and `binary_fields`, or a parent that also has nested children (for example `55` with `55.9F02`, or `48` with `48.1`). Packing it would depend on order and lose data.
 
 ## `send`
 
-Sends one ISO 8583 message to a host over TCP and decodes the one response. It
-is a focused probe for a test endpoint or simulator, with no listener, session,
-retry, or sign-on logic.
+Sends one ISO 8583 message to a host over TCP and decodes the one response. It is a probe for a test endpoint or simulator, with no listener, session, retry, or sign-on logic.
 
 ![send](./docs/demo-send.gif)
 
-The input is a JSON document (packed with the active spec) or an already-packed
-hex/raw message, read from a file, `-`, stdin, or `--raw`. `--raw` takes an
-inline message — a JSON document or a hex/raw string — not hex only.
+The input is a JSON document (packed with the active spec) or a packed hex/raw message, read from a file, `-`, stdin, or `--raw`. `--raw` takes either a JSON document or a hex/raw string.
 
-`--framing` selects the length header, used for both request and response:
+`--framing` selects the length header for both request and response:
 
-- `2byte-binary` (default) — a 2-byte big-endian length prefix.
-- `4digit-ascii` — a 4-digit ASCII length header (`0094…`).
-- `none` — no header; the request half-closes after the write and the response
-  is read until EOF (the peer closes) or `--timeout`.
+- `2byte-binary` (default): a 2-byte big-endian length prefix.
+- `4digit-ascii`: a 4-digit ASCII length header (`0094…`).
+- `none`: no header. The request half-closes after the write, and the response is read until the peer closes or `--timeout`.
 
-`--timeout` (default `5s`) bounds the connect and read. The request and response
-are masked by default like [`view`](#view); `--unsafe` shows raw values.
+`--timeout` (default `5s`) bounds the connect and read. Output is masked like [`view`](#view) unless you pass `--unsafe`.
 
-`--dry-run` packs and frames the request, prints what *would* be sent (the
-framing, the wire byte count, and the decoded request view), then exits without
-opening a connection. It is the fast way to confirm a message packs under the
-active spec before a real run; in an E2E script you can keep the same command
-line and just drop the flag for the live send. A malformed `HOST:PORT` is
-reported the same way with or without the flag. Because the framed wire bytes
-carry the PAN/track/PIN in the clear, they are withheld by default; pass
-`--unsafe` to also print the framed bytes (a `Framed bytes:` line, or `framed_hex`
-in `--format json`) when you need to inspect exactly what would go on the wire.
+`--dry-run` packs and frames the request, prints the framing, the wire byte count and the decoded request, and exits without connecting. A malformed `HOST:PORT` is reported the same way with or without it. The framed bytes carry the PAN, track and PIN in the clear, so they are printed only with `--unsafe` (a `Framed bytes:` line, or `framed_hex` in `--format json`).
 
-For shell-based E2E or CI, assert on the decoded reply without piping through
-`jq`: `--expect-mti VALUE` checks the response MTI, and `--expect-field
-PATH=VALUE` (repeatable) checks a field. Assertions compare against the decoded,
-**unmasked canonical** values — so an expectation on a masked field (a PAN, for
-example) still matches its real value — and any mismatch prints a deterministic
-`expected … got …` error on stderr and exits non-zero.
+For CI, `--expect-mti VALUE` checks the response MTI and `--expect-field PATH=VALUE` (repeatable) checks a field, without `jq`. They compare against the unmasked values, so an expectation on a PAN matches its real value. A mismatch prints `expected … got …` on stderr and exits non-zero.
 
 ```shell
 # Send a packed 0800 network echo and decode the 0810 reply (default framing).
@@ -359,45 +294,13 @@ Response:
   70 = 301  → Echo test
 ```
 
-The describe view lists **every** present field — not only the codes that decode
-to a human meaning — so a fault investigation surfaces fields like F37/F38/F41/F42/F48/F63,
-consistent with [`view`](#view). Cardholder data is masked the same way (`--unsafe`
-shows raw values).
-
-`--format json` emits a machine-readable record: `remote_addr`, `framing`,
-`timeout`, `rtt_ms`, `sent_bytes`, `received_bytes`, the `request` / `response`
-(byte count, plus the raw wire `hex` only under `--unsafe`), and the decoded
-`request_view` / `response_view` (the same shape as `view --format json`). All of
-it is masked by default — the raw packed bytes carry the PAN in the clear, so
-their hex is withheld unless you pass `--unsafe`.
-
-```mermaid
-sequenceDiagram
-    actor Operator
-    participant Tool as iso8583tool send
-    participant Host as ISO8583 Host
-
-    Operator->>Tool: send HOST:PORT MESSAGE [--framing ...]
-    Note over Tool: pack JSON with the active spec<br/>(or use the packed hex/raw as-is)
-    Tool->>Host: TCP connect
-    Tool->>Host: framed request (length header + message)
-    Host-->>Tool: framed response
-    Note over Tool: unpack with the active spec,<br/>decode codes, mask cardholder data
-    Tool-->>Operator: describe / JSON (RTT, byte counts, request & response views)
-```
+Like [`view`](#view), the output lists every present field, including ones with no decoded meaning such as F37/F38/F41/F42/F48/F63. `--format json` writes `remote_addr`, `framing`, `timeout`, `rtt_ms`, `sent_bytes`, `received_bytes`, the `request` / `response` (byte count, plus the raw wire `hex` only under `--unsafe`), and the decoded `request_view` / `response_view` in the shape of `view --format json`, all masked by default.
 
 ## `validate`
 
-By default, `validate` reports whether a message **unpacks**, any unknown TLV
-tags, and the field path of an unpack failure. It does **not** assert that the
-message is a complete, business-valid BASE I transaction — a message with only a
-STAN can still unpack. Exit code is `0` for success or warnings, `1` for errors.
+By default, `validate` reports whether a message unpacks, any unknown TLV tags, and the field path of an unpack failure. It does not check that the message is a complete BASE I transaction; a message with only a STAN can still unpack. The exit code is `0` for success or warnings and `1` for errors.
 
-Add `--strict` for best-effort, message-class-aware semantic checks: required
-and recommended fields per MTI (for example, a `0110` response must carry a
-response code in field 39, an approved response should carry field 38, a
-reversal needs field 90). Strict mode is a heuristic aid, not a substitute for
-full network certification.
+`--strict` adds heuristic checks per MTI for required and recommended fields: a `0110` response must carry a response code in field 39, an approved response should carry field 38, and a reversal needs field 90. It does not replace network certification.
 
 ```shell
 iso8583tool validate examples/basei/0100-auth-request-unknown-tlv.hex
@@ -415,8 +318,7 @@ Issues:
 - [warning] 55.DF8129: unknown TLV tag preserved for round-trip safety
 ```
 
-A deliberately broken message is a **failure example**: it reports the error and
-exits non-zero (use `--raw` to pass an inline message instead of a file):
+A broken message reports the error and exits non-zero (`--raw` passes an inline message):
 
 ```shell
 $ iso8583tool validate --raw 01007220
@@ -428,18 +330,11 @@ $ echo $?
 1
 ```
 
-The hint appears whenever a message fails to unpack, since the usual cause is the
-wrong spec. See [`doctor`](#doctor).
+The hint appears whenever a message fails to unpack, because the usual cause is the wrong spec. See [`doctor`](#doctor).
 
 ## `doctor`
 
-ISO 8583 does not pin a wire encoding: the same bitmap can be ASCII, packed BCD,
-or binary, and private fields differ per network. So a capture only decodes under
-the spec it was produced with. `doctor` takes that guesswork out: it tries every
-built-in preset and recommends the best fit, ranked by an exact byte-length round
-trip, a clean unpack, a valid MTI, and the number of decoded fields. The input
-encoding is auto-detected (hex text vs raw bytes), so a raw `.bin` capture works
-without flags; override with `--encoding hex|raw` if the guess is wrong.
+ISO 8583 does not fix a wire encoding: the bitmap can be ASCII, packed BCD, or binary, and private fields differ per network, so a capture decodes only under the spec that produced it. `doctor` tries every built-in preset and ranks them by an exact byte-length round trip, a clean unpack, a valid MTI, and the number of decoded fields. It detects hex text or raw bytes on its own, so a raw `.bin` capture needs no flags; `--encoding hex|raw` overrides the guess.
 
 ```shell
 iso8583tool doctor examples/basei/0110-auth-response.hex
@@ -460,19 +355,11 @@ Candidates:
 Confirm with: iso8583tool view examples/basei/0110-auth-response.hex --spec basei-starter
 ```
 
-`doctor` exits non-zero when no built-in preset can unpack the message, which
-usually means it needs a custom `moov-io/iso8583` JSON spec. It only ranks the
-built-in presets and can flag more than one as fitting, so confirm the result
-with `view`. When `basei-starter` and `spec87ascii` tie — a message with no
-Field 55 fits both — `doctor` names both and explains how to choose: they differ
-only in Field 55 (EMV BER-TLV vs plain ASCII), so pick `basei-starter` if the
-message carries EMV/ICC data in Field 55, otherwise `spec87ascii`. `validate`
-points here when a message fails to unpack.
+`doctor` exits non-zero when no built-in preset can unpack the message, which usually means it needs a custom `moov-io/iso8583` JSON spec. When several presets fit, confirm with `view`. `basei-starter` and `spec87ascii` differ only in Field 55 (EMV BER-TLV or plain ASCII), so for a message without it `doctor` names both; pick `basei-starter` if Field 55 carries EMV/ICC data.
 
 ## `specs`
 
-Lists the built-in presets that `--spec` accepts. Any `moov-io/iso8583` JSON spec
-path also works as `--spec`.
+Lists the built-in presets that `--spec` accepts. A `moov-io/iso8583` JSON spec path also works as `--spec`.
 
 ```shell
 iso8583tool specs
@@ -510,9 +397,7 @@ Available samples:
 
 ## Message document
 
-`convert` and the JSON examples use this shape. `fields` holds text values,
-`binary_fields` holds hex values, and keys are dot-paths. Fixed-length values
-keep their padded form, so a document is easy to edit and pack back.
+`convert` and the JSON examples use this shape. `fields` holds text values, `binary_fields` holds hex values, and keys are dot-paths. Fixed-length values keep their padding, so a document can be edited and packed back.
 
 ```json
 {
@@ -534,12 +419,7 @@ keep their padded form, so a document is easy to edit and pack back.
 
 ## BASE I defaults
 
-The default spec is `basei-starter`: ASCII 1987 with Field 55 as EMV BER-TLV.
-Samples live under [`examples/basei`](./examples/basei). `view` reports each
-private field's strategy — how the active spec actually models it. In
-`basei-starter`, field 55 is a BER-TLV composite and the other private fields are
-plain values (`opaque`); the catalog note hints at the structured layout each
-could take in a custom spec:
+The default spec `basei-starter` is ASCII 1987 with Field 55 as EMV BER-TLV. Samples are under [`examples/basei`](./examples/basei). `view` reports how the active spec models each private field:
 
 | Field | Shown as | Notes |
 |-------|----------|-------|
@@ -549,9 +429,7 @@ could take in a custom spec:
 | 63    | opaque   | raw until the partner format is stable |
 | 127   | opaque   | plain value; nested-bitmap territory for a custom spec |
 
-A dot-path such as `48.1` works only when the active spec models field 48 as a
-composite (a custom `--spec`), not under the plain-value built-in. Field 55 is
-edited per tag, and unknown tags survive a round trip:
+A dot-path such as `48.1` works only when a custom `--spec` models field 48 as a composite. Field 55 is edited per tag, and unknown tags survive a round trip:
 
 ```shell
 iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex | iso8583tool convert | iso8583tool view - --filter 55.DF8129
@@ -559,22 +437,14 @@ iso8583tool convert examples/basei/0100-auth-request-unknown-tlv.hex | iso8583to
 
 ## Other layouts
 
-`--spec` switches the spec. `spec87ascii` is the plain ISO 8583:1987 ASCII
-spec. `spec87bcd-starter` is a raw-binary starter for packed-BCD MTI/common
-numeric fields plus a binary bitmap, which is useful for quiz-style fixtures
-such as `kanmu/gocon-2022-spring/message.bin`. Any
-[`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec works too. Run
-[`iso8583tool specs`](#specs) to list the presets, or
-[`iso8583tool doctor`](#doctor) to detect which one a capture uses.
+`spec87ascii` is the plain ISO 8583:1987 ASCII spec. `spec87bcd-starter` is a raw-binary starter with packed-BCD MTI and common numeric fields and a binary bitmap, for quiz-style fixtures such as `kanmu/gocon-2022-spring/message.bin`. Any [`moov-io/iso8583`](https://github.com/moov-io/iso8583) JSON spec works too. [`iso8583tool specs`](#specs) lists the presets and [`iso8583tool doctor`](#doctor) detects which one a capture uses.
 
 ```shell
 iso8583tool view examples/spec87ascii/0800-network-echo.hex --spec spec87ascii
 iso8583tool view message.bin --encoding raw --spec spec87bcd-starter
 ```
 
-`--config` remains available for extension overlays and default bundles. The
-`extensions` list **replaces** the built-in catalog, so list every private field
-you want annotated, not just the one you are changing:
+`--config` takes extension overlays and default bundles. The `extensions` list replaces the built-in catalog, so list every private field you want annotated:
 
 ```json
 {
@@ -585,15 +455,9 @@ you want annotated, not just the one you are changing:
 }
 ```
 
-`spec` in the config file is optional and can provide a default. The CLI
-`--spec` flag overrides it when both are present. `strategy` is `opaque`,
-`tlv`, `positional`, or `bitmap`. Omitting the `extensions` key keeps the
-built-in catalog; setting it to an empty array (`"extensions": []`) disables
-the catalog entirely, so no private fields are annotated.
+`spec` in the config file sets a default that the `--spec` flag overrides. `strategy` is `opaque`, `tlv`, `positional`, or `bitmap`. Without the `extensions` key the built-in catalog stays; `"extensions": []` turns it off, so no private fields are annotated.
 
-A fuller worked overlay that relabels the private-field band (F48/F55/F62/F63/F127)
-for a fictional acquirer lives at
-[`examples/basei-overlay-config.json`](./examples/basei-overlay-config.json):
+[`examples/basei-overlay-config.json`](./examples/basei-overlay-config.json) relabels the private fields F48/F55/F62/F63/F127 for a fictional acquirer:
 
 ```shell
 iso8583tool view examples/basei/0110-auth-response.hex --config examples/basei-overlay-config.json
@@ -621,8 +485,7 @@ make e2e        # atago end-to-end tests against a freshly built binary
 make lint       # golangci-lint
 ```
 
-README command examples are covered by the atago end-to-end tests under
-[`e2e/atago/`](./e2e/atago). See [CONTRIBUTING.md](./CONTRIBUTING.md).
+The atago tests under [`e2e/atago/`](./e2e/atago) run the README command examples. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Contributors ✨
 
